@@ -28,8 +28,8 @@ async def chat(request: Request):
     messages = make_prompt(prompt)
 
     response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": prompt}]
+    model="gpt-4-1106-preview",
+    messages=[{"role": "user", "content": prompt}]
     )
     
     print("✅ Using model:", response.model)  # 이 줄 추가
