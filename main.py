@@ -23,18 +23,32 @@ app.add_middleware(
 @app.post("/chat")
 async def chat(request: Request):
     body = await request.json()
-    print('received body: ', body)
+    print("received body: ", body)
+
     prompt = body.get("prompt", "")
-    messages = make_prompt(prompt)
+    system_role = body.get("system_role", "You are a helpful assistant.")
+    temperature = body.get("temperature", 0.7)
+
+    messages = make_prompt(prompt, system_role)
 
     response = client.chat.completions.create(
-    model="gpt-4-1106-preview",
-    messages=[{"role": "user", "content": prompt}]
+        model="gpt-4-1106-preview",
+        messages=messages,
+        temperature=temperature,
     )
-    
-    print("✅ Using model:", response.model)  # 이 줄 추가
 
-    return {"reply": response.choices[0].message.content}
+    print("✅ Using model:", response.model)
+
+    reply = response.choices[0].message.content
+    log_chat(
+        timestamp=datetime.utcnow().isoformat(),
+        user_input=prompt,
+        system_role=system_role,
+        temperature=temperature,
+        reply=reply,
+    )
+
+    return {"reply": reply}
 
 
 def log_chat(timestamp, user_input, system_role, temperature, reply):
