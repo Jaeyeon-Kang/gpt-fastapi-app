@@ -1,145 +1,112 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
-import config
 from prompt_template import make_prompt
 from datetime import datetime
-import os, csv
-import numpy as np
-import faiss
 from dotenv import load_dotenv
+from pathlib import Path
+import faiss, numpy as np, csv, os
 
-# 1) Load environment variables
+# ── 환경 및 클라이언트 ─────────────────────────────
 load_dotenv()
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# ─────────────────────────────────────────────────
 
-# 2) Initialize OpenAI client
-client = OpenAI(api_key=config.OPENAI_API_KEY)
-
-# 3) Create FastAPI app and enable CORS
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"], allow_credentials=True,
+    allow_methods=["*"], allow_headers=["*"]
 )
 
-# 4) Shared log function
-def log_chat(timestamp, user_input, system_role, temperature, reply):
+# ── 경로 상수 ──────────────────────────────────────
+INDEX_PATH = "data/index.faiss"
+TEXT_PATH  = "data/text_chunks.txt"
+EMBED_MODEL = "text-embedding-3-small"
+# ─────────────────────────────────────────────────
+
+# ---------- 유틸 ----------
+def log_chat(ts, user_input, role, temp, reply):
     os.makedirs("logs", exist_ok=True)
-    log_path = "logs/chat_logs.csv"
-    log_exists = os.path.isfile(log_path)
-    with open(log_path, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(
-            f,
-            fieldnames=["timestamp", "user_input", "system_role", "temperature", "reply"],
-        )
-        if not log_exists:
-            writer.writeheader()
-        writer.writerow(
-            {
-                "timestamp": timestamp,
-                "user_input": user_input,
-                "system_role": system_role,
-                "temperature": temperature,
-                "reply": reply,
-            }
-        )
+    path = "logs/chat_logs.csv"
+    new  = not Path(path).exists()
+    with open(path, "a", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f,
+              ["timestamp","user_input","system_role","temperature","reply"])
+        if new: w.writeheader()
+        w.writerow({
+            "timestamp": ts, "user_input": user_input,
+            "system_role": role, "temperature": temp, "reply": reply
+        })
 
-# 5) Simple chat endpoint (unchanged)
+def ensure_faiss_index():
+    """index.faiss 가 없거나 text 파일이 새로 수정됐으면 자동 생성"""
+    idx = Path(INDEX_PATH); txt = Path(TEXT_PATH)
+    if (not idx.exists()) or (txt.stat().st_mtime > idx.stat().st_mtime):
+        print("🔄  Re-building FAISS index …")
+        from generate_embedding import load_chunks, build_index
+        build_index(load_chunks())
+        print("✅  index.faiss rebuilt")
+
+def embed_text(text:str):
+    emb = client.embeddings.create(input=text, model=EMBED_MODEL).data[0].embedding
+    return np.asarray(emb, dtype="float32").reshape(1, -1)
+
+def load_chunks():
+    with open(TEXT_PATH, encoding="utf-8") as f:
+        return [c.strip() for c in f.read().split("\n\n") if c.strip()]
+
+# ---------- 라우트 ----------
 @app.post("/chat")
-async def chat(request: Request):
-    body = await request.json()
+async def chat(req: Request):
+    body   = await req.json()
     prompt = body.get("prompt", "")
-    system_role = body.get("system_role", "You are a helpful assistant.")
-    temperature = body.get("temperature", 0.7)
+    role   = body.get("system_role", "You are a helpful assistant.")
+    temp   = float(body.get("temperature", 0.7))
 
-    messages = make_prompt(prompt, system_role)
-    response = client.chat.completions.create(
-        model="gpt-4-1106-preview",
-        messages=messages,
-        temperature=temperature,
+    messages = make_prompt(prompt, role)
+    res  = client.chat.completions.create(
+        model="gpt-4-1106-preview", messages=messages, temperature=temp
     )
-    reply = response.choices[0].message.content
-
-    log_chat(
-        timestamp=datetime.utcnow().isoformat(),
-        user_input=prompt,
-        system_role=system_role,
-        temperature=temperature,
-        reply=reply,
-    )
+    reply = res.choices[0].message.content
+    log_chat(datetime.utcnow().isoformat(), prompt, role, temp, reply)
     return {"reply": reply}
 
-# 6) Paths and model for semantic search
-INDEX_PATH = "data/index.faiss"
-TEXT_PATH = "data/text_chunks.txt"
-EMBEDDING_MODEL = "text-embedding-3-small"
-
-def load_text_chunks(path):
-    with open(path, "r", encoding="utf-8") as f:
-        return [chunk.strip() for chunk in f.read().split("\n\n") if chunk.strip()]
-
-def embed_text(text):
-    response = client.embeddings.create(input=text, model=EMBEDDING_MODEL)
-    vec = response.data[0].embedding
-    return np.array(vec, dtype="float32").reshape(1, -1)
-
-# 7) Now accepts both temperature and system_prompt dynamically
-def generate_gpt_answer(question, top_chunks, temperature, system_prompt):
-    context = "\n\n".join(top_chunks)
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"{context}\n\n질문: {question}"},
-    ]
-    response = client.chat.completions.create(
-        model="gpt-4-1106-preview", messages=messages, temperature=temperature
-    )
-    return response.choices[0].message.content.strip()
-
-# 8) Semantic search + GPT endpoint, fully dynamic
 @app.post("/search")
-async def search(request: Request):
-    body = await request.json()
-    # extract dynamic parameters from client
-    question = body.get("question", "")
-    top_k = body.get("top_k", 3)
-    temperature = body.get("temperature", 0.7)
-    system_prompt = body.get(
-        "system_prompt",
-        "다음 문단들을 참고하여 사용자의 질문에 명확하고 간결하게 답변해주세요.",
-    )
+async def search(req: Request):
+    body  = await req.json()
+    q     = body.get("question", "")
+    top_k = int(body.get("top_k", 3))
+    temp  = float(body.get("temperature", 0.7))
+    sys_p = body.get("system_prompt",
+            "다음 문단들을 참고하여 사용자의 질문에 명확하고 간결하게 답변해주세요.")
 
-    # 1) Embed the question
-    query_vec = embed_text(question)
-    # 2) FAISS lookup
+    # 1) 임베딩 & 검색
+    vec   = embed_text(q)
     index = faiss.read_index(INDEX_PATH)
-    chunks = load_text_chunks(TEXT_PATH)
-    distances, indices = index.search(query_vec, top_k)
-    top_chunks = [chunks[i] for i in indices[0]]
+    chunks= load_chunks()
+    D,I   = index.search(vec, top_k)
+    top_chunks = [chunks[i] for i in I[0]]
 
-    # 3) Generate answer with dynamic temperature & system_prompt
-    gpt_answer = generate_gpt_answer(question, top_chunks, temperature, system_prompt)
+    # 2) GPT 요약
+    ctx   = "\n\n".join(top_chunks)
+    messages = [
+        {"role":"system","content":sys_p},
+        {"role":"user"  ,"content":f"{ctx}\n\n질문: {q}"}
+    ]
+    ans = client.chat.completions.create(
+        model="gpt-4-1106-preview", messages=messages, temperature=temp
+    ).choices[0].message.content.strip()
 
-    # optional: log the search as well
-    # log_chat(
-    #     timestamp=datetime.utcnow().isoformat(),
-    #     user_input=question,
-    #     system_role="semantic_search",
-    #     temperature=temperature,
-    #     reply=gpt_answer,
-    # )
-
-    # 4) Return everything, including the parameters actually used
     return {
-        "question": question,
-        "top_k": top_k,
-        "temperature": temperature,
-        "system_prompt": system_prompt,
+        "question": q, "top_k": top_k, "temperature": temp,
+        "system_prompt": sys_p,
         "top_chunks": [
-            {"rank": rank + 1, "text": chunks[idx], "distance": float(distances[0][rank])}
-            for rank, idx in enumerate(indices[0])
+            {"rank": r+1, "text": chunks[i], "distance": float(D[0][r])}
+            for r,i in enumerate(I[0])
         ],
-        "gpt_answer": gpt_answer,
+        "gpt_answer": ans
     }
+
+# ---------- 앱 시작 시 인덱스 확인 ----------
+ensure_faiss_index()

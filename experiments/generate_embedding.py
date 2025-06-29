@@ -1,53 +1,36 @@
 # generate_embedding.py
-
-import os
-import openai
-import faiss
-import numpy as np
+import os, faiss, numpy as np
+from openai import OpenAI
 from dotenv import load_dotenv
+from pathlib import Path
 
-# 환경 변수 로드 (OPENAI_API_KEY)
+# ── 설정 ──────────────────────────────────────────
+TEXT_PATH   = "data/text_chunks.txt"
+INDEX_PATH  = "data/index.faiss"
+EMBED_MODEL = "text-embedding-3-small"
+# ─────────────────────────────────────────────────
+
 load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# 파일 경로
-TEXT_PATH = "data/text_chunks.txt"
-INDEX_PATH = "data/index.faiss"
-EMBEDDING_MODEL = "text-embedding-3-small"
+def load_chunks(path=TEXT_PATH):
+    with open(path, encoding="utf-8") as f:
+        return [c.strip() for c in f.read().split("\n\n") if c.strip()]
 
-def get_text_chunks(path):
-    with open(path, "r", encoding="utf-8") as f:
-        text = f.read()
-    # 문단 구분 기준: 제목 제외, 숫자. 또는 \n\n로 분리 가능
-    return [chunk.strip() for chunk in text.split("\n\n") if chunk.strip()]
+def build_index(chunks):
+    embeds = []
+    for i, chunk in enumerate(chunks, 1):
+        print(f"🔹 [{i}/{len(chunks)}] embedding: {chunk[:30]}…")
+        emb = client.embeddings.create(input=chunk, model=EMBED_MODEL).data[0].embedding
+        embeds.append(emb)
 
-def get_embedding(text):
-    response = openai.embeddings.create(
-        input=text,
-        model=EMBEDDING_MODEL
-    )
-    return response.data[0].embedding
-
-def main():
-    chunks = get_text_chunks(TEXT_PATH)
-    print(f"✅ 문단 수: {len(chunks)}")
-
-    embeddings = []
-    for i, chunk in enumerate(chunks):
-        print(f"🔹 [{i+1}] 임베딩 중: {chunk[:30]}...")
-        embedding = get_embedding(chunk)
-        embeddings.append(embedding)
-
-    # numpy 배열로 변환
-    embedding_matrix = np.array(embeddings).astype("float32")
-
-    # FAISS 인덱스 생성
-    dimension = len(embedding_matrix[0])
-    index = faiss.IndexFlatL2(dimension)
-    index.add(embedding_matrix)
-    faiss.write_index(index, INDEX_PATH)
-
-    print(f"\n✅ FAISS 인덱스 생성 완료: {INDEX_PATH}")
+    xb   = np.array(embeds, dtype="float32")
+    dim  = xb.shape[1]
+    idx  = faiss.IndexFlatL2(dim)
+    idx.add(xb)
+    Path(INDEX_PATH).parent.mkdir(parents=True, exist_ok=True)
+    faiss.write_index(idx, INDEX_PATH)
+    print(f"✅ wrote {len(chunks)} vectors → {INDEX_PATH}")
 
 if __name__ == "__main__":
-    main()
+    build_index(load_chunks())
