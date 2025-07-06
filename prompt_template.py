@@ -1,6 +1,6 @@
 from typing import List, Dict
 
-def make_prompt(user_input: str, system_role: str = "You are a helpful assistant") -> List[Dict[str, str]]:
+def make_prompt(user_input: str, system_role: str = "You are a helpful assistant"):
     return [
         {"role": "system", "content": system_role},
         {"role": "user", "content": user_input}
