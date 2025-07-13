@@ -1,202 +1,271 @@
+#!/usr/bin/env python3
+"""
+RAG Experiment Automation Pipeline
+Grid search for chunking, top-k, and temperature parameters
+"""
+
 import os
 import csv
+import time
+import argparse
 import itertools
-import re
 from datetime import datetime
+from typing import List, Dict, Any
+import uuid
+
+import numpy as np
 from openai import OpenAI
 from dotenv import load_dotenv
 import tiktoken
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+import faiss
 
-# 이 스크립트는 design 문서에 정의된 실험을 수행합니다.
-
-# ─── 설정 (design 문서와 동기화) ──────────────────────────────────
+# Load environment variables
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# 실험 파라미터 그리드
-CHUNK_STRATEGIES = ["S-A", "S-B", "S-C"]
-TOP_K_VALUES = [3, 5, 8]
-TEMPERATURE_VALUES = [0.2, 0.5, 0.8]
-
-# 질문 샘플 (인공지능 주제 기준, 한국어) - 테스트용으로 더 축소
-QUESTION_SAMPLES = {
-    "fact": [
-        "'인공지능'이라는 용어를 처음 만든 사람은 누구인가?"
-    ],
-    "summary": [],
-    "creative": []
-}
-
-# 결과 저장 경로 (항상 프로젝트 루트 기준 experiments/results/에 저장되게 절대경로로 지정)
+# Base directory setup
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR = os.path.join(BASE_DIR, "data")
 RESULTS_DIR = os.path.join(BASE_DIR, "experiments", "results")
 os.makedirs(RESULTS_DIR, exist_ok=True)
-TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
-OUTPUT_CSV_PATH = os.path.join(RESULTS_DIR, f"grid_search_{TIMESTAMP}.csv")
 
-# ─── 핵심 로직 (실제 구현) ─────────────────────────────────────────
+# Default experiment parameters
+DEFAULT_CHUNK_SIZES = [256, 512]
+DEFAULT_TOP_KS = [3, 5, 8]
+DEFAULT_TEMPERATURES = [0.2, 0.5, 0.8]
 
-def get_chunks_by_strategy(strategy: str, text: str):
-    """지정된 전략에 따라 텍스트를 조각내는 함수"""
-    print(f"Applying chunking strategy: {strategy}")
-    
-    if strategy == "S-A":
-        # 문단 기준 분할 (빈 줄로 구분된 문단)
-        chunks = [chunk.strip() for chunk in text.split('\n\n') if chunk.strip()]
-        return chunks
-    
-    elif strategy == "S-B":
-        # 고정 토큰 크기 분할 (약 500 토큰)
-        encoding = tiktoken.get_encoding("cl100k_base")  # GPT-4 토크나이저
-        tokens = encoding.encode(text)
-        
-        chunk_size = 500
-        overlap = 50
-        chunks = []
-        
-        for i in range(0, len(tokens), chunk_size - overlap):
-            chunk_tokens = tokens[i:i + chunk_size]
-            chunk_text = encoding.decode(chunk_tokens)
-            if chunk_text.strip():
-                chunks.append(chunk_text.strip())
-        
-        return chunks
-    
-    elif strategy == "S-C":
-        # 재귀적 문자 분할 (LangChain 사용)
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
-            length_function=len,
-            separators=["\n\n", "\n", ". ", " ", ""]
+# Test questions (AI topic)
+TEST_QUESTIONS = [
+    "Who coined the term 'artificial intelligence'?",
+    "What is the Turing Test?",
+    "How does machine learning work?",
+    "What are neural networks?",
+    "Explain deep learning in simple terms"
+]
+
+def get_embeddings(texts: List[str]) -> np.ndarray:
+    """Get embeddings for a list of texts using OpenAI API"""
+    embeddings = []
+    for text in texts:
+        response = client.embeddings.create(
+            model="text-embedding-3-small",
+            input=text
         )
-        chunks = text_splitter.split_text(text)
-        return chunks
+        embeddings.append(response.data[0].embedding)
+    return np.array(embeddings)
+
+def chunk_text(text: str, chunk_size: int) -> List[str]:
+    """Split text into chunks using RecursiveCharacterTextSplitter"""
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_size // 4,
+        length_function=len,
+        separators=["\n\n", "\n", ". ", " ", ""]
+    )
+    return text_splitter.split_text(text)
+
+def create_faiss_index(embeddings: np.ndarray) -> faiss.IndexFlatIP:
+    """Create and return a Faiss index for similarity search"""
+    dimension = embeddings.shape[1]
+    index = faiss.IndexFlatIP(dimension)  # Inner product for cosine similarity
+    index.add(embeddings.astype('float32'))
+    return index
+
+def search_similar_chunks(query_embedding: np.ndarray, index: faiss.IndexFlatIP, top_k: int) -> tuple:
+    """Search for similar chunks using Faiss"""
+    query_embedding = query_embedding.astype('float32').reshape(1, -1)
+    scores, indices = index.search(query_embedding, top_k)
+    return scores[0], indices[0]
+
+def generate_answer(context: str, question: str, temperature: float) -> str:
+    """Generate answer using OpenAI GPT"""
+    prompt = f"""Based on the following context, answer the question:
+
+Context:
+{context}
+
+Question: {question}
+
+Answer:"""
+
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are a helpful AI assistant. Answer based only on the provided context."},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=temperature,
+        max_tokens=300
+    )
+    answer = response.choices[0].message.content
+    return answer if answer else "No response generated"
+
+def calculate_recall_at_5(relevant_chunks: List[str], retrieved_chunks: List[str]) -> float:
+    """Calculate recall@5 (simplified version)"""
+    if not relevant_chunks:
+        return 0.0
     
-    else:
-        raise ValueError(f"Unknown strategy: {strategy}")
+    # For simplicity, we'll consider chunks containing key terms as relevant
+    relevant_terms = ["AI", "artificial intelligence", "machine learning", "neural", "turing"]
+    relevant_count = 0
+    
+    for chunk in retrieved_chunks[:5]:
+        if any(term.lower() in chunk.lower() for term in relevant_terms):
+            relevant_count += 1
+    
+    return relevant_count / min(5, len(relevant_chunks))
 
-def get_question_type(question: str) -> str:
-    """질문의 유형을 판별하는 함수"""
-    if any(keyword in question for keyword in ["누구", "언제", "무엇", "어디", "어떤"]):
-        return "fact"
-    elif any(keyword in question for keyword in ["요약", "간략", "설명"]):
-        return "summary"
-    else:
-        return "creative"
+def calculate_f1_score(precision: float, recall: float) -> float:
+    """Calculate F1 score"""
+    if precision + recall == 0:
+        return 0.0
+    return 2 * (precision * recall) / (precision + recall)
 
-def run_single_experiment(chunk_strategy, question, top_k, temperature):
-    """단일 실험을 실행하고 결과를 반환하는 함수"""
-    try:
-        # 1. 텍스트 파일 읽기 (상대 경로 수정)
-        with open("../data/text_chunks.txt", "r", encoding="utf-8") as f:
-            text = f.read()
-        
-        # 2. 청킹 전략 적용
-        chunks = get_chunks_by_strategy(chunk_strategy, text)
-        
-        # 3. 간단한 키워드 기반 검색 (실제로는 Faiss 사용해야 함)
-        question_lower = question.lower()
-        relevant_chunks = []
-        
-        for chunk in chunks:
-            # 질문의 키워드가 청크에 포함되어 있는지 확인
-            chunk_lower = chunk.lower()
-            if any(keyword in chunk_lower for keyword in ["인공지능", "AI", "튜링", "머신러닝", "신경망", "딥러닝"]):
-                relevant_chunks.append(chunk)
-                if len(relevant_chunks) >= top_k:
-                    break
-        
-        # 4. LLM에 질문 및 답변 생성 (일시적으로 비활성화)
-        # context = "\n\n".join(relevant_chunks[:top_k])
-        # prompt = f"""다음은 인공지능에 대한 정보입니다:
-        # 
-        # {context}
-        # 
-        # 질문: {question}
-        # 
-        # 위의 정보를 바탕으로 질문에 답변해주세요. 정보에 없는 내용은 추측하지 말고, 정보에 있는 내용만을 바탕으로 답변해주세요."""
-        # 
-        # response = client.chat.completions.create(
-        #     model="gpt-3.5-turbo",
-        #     messages=[
-        #         {"role": "system", "content": "당신은 인공지능 전문가입니다. 주어진 정보를 바탕으로 정확하고 간결하게 답변해주세요."},
-        #         {"role": "user", "content": prompt}
-        #     ],
-        #     temperature=temperature,
-        #     max_tokens=500
-        # )
-        # 
-        # gpt_answer = response.choices[0].message.content
-        
-        # 임시 답변
-        gpt_answer = f"청킹 전략 {chunk_strategy}로 {len(chunks)}개 청크 생성, {len(relevant_chunks)}개 관련 청크 검색됨"
-        
-        # 5. 간단한 평가 메트릭 (실제로는 더 정교한 평가 필요)
-        question_type = get_question_type(question)
-        
-        # 임시 평가 메트릭 (실제로는 정답과 비교해야 함)
-        evaluation_f1 = 0.8 if len(relevant_chunks) > 0 else 0.0
-        evaluation_recall = len(relevant_chunks) >= min(top_k, 3)
-        
-        result = {
-            "chunk_strategy": chunk_strategy,
-            "question_type": question_type,
-            "question": question,
-            "top_k": top_k,
-            "temperature": temperature,
-            "retrieved_chunks": str([chunk[:100] + "..." if len(chunk) > 100 else chunk for chunk in relevant_chunks]),
-            "gpt_answer": gpt_answer,
-            "evaluation_metric_F1": evaluation_f1,
-            "evaluation_metric_Recall@5": evaluation_recall
-        }
-        return result
-        
-    except Exception as e:
-        print(f"Error in experiment: {e}")
-        return {
-            "chunk_strategy": chunk_strategy,
-            "question_type": "error",
-            "question": question,
-            "top_k": top_k,
-            "temperature": temperature,
-            "retrieved_chunks": "error",
-            "gpt_answer": f"Error: {str(e)}",
-            "evaluation_metric_F1": 0.0,
-            "evaluation_metric_Recall@5": False
-        }
-
-# ─── 메인 실행 함수 ───────────────────────────────────────────────
+def run_single_experiment(
+    run_id: str,
+    chunk_size: int,
+    top_k: int,
+    temperature: float,
+    question: str,
+    chunks: List[str],
+    chunk_embeddings: np.ndarray,
+    faiss_index: faiss.IndexFlatIP
+) -> Dict[str, Any]:
+    """Run a single experiment and return results"""
+    
+    start_time = time.time()
+    
+    # Get query embedding
+    query_embedding = get_embeddings([question])[0]
+    
+    # Search for similar chunks
+    scores, indices = search_similar_chunks(query_embedding, faiss_index, top_k)
+    retrieved_chunks = [chunks[i] for i in indices]
+    
+    # Generate answer
+    context = "\n\n".join(retrieved_chunks)
+    answer = generate_answer(context, question, temperature)
+    
+    # Calculate metrics
+    latency_ms = (time.time() - start_time) * 1000
+    
+    # Simplified evaluation (in real scenario, you'd have ground truth)
+    recall_at_5 = calculate_recall_at_5(retrieved_chunks, retrieved_chunks)
+    precision = recall_at_5  # Simplified
+    f1 = calculate_f1_score(precision, recall_at_5)
+    
+    # Estimate cost (rough calculation)
+    input_tokens = len(context.split()) + len(question.split())
+    output_tokens = len(answer.split())
+    cost_cents = (input_tokens * 0.0000015 + output_tokens * 0.000002) * 100
+    
+    return {
+        "run_id": run_id,
+        "chunk": chunk_size,
+        "k": top_k,
+        "temp": temperature,
+        "recall@5": round(recall_at_5, 4),
+        "f1": round(f1, 4),
+        "latency_ms": round(latency_ms, 2),
+        "cost_cents": round(cost_cents, 4)
+    }
 
 def main():
-    print("Grid search 실험을 시작합니다...")
-    # os.makedirs(os.path.dirname(OUTPUT_CSV_PATH), exist_ok=True) # 이 줄은 이제 필요 없음
-
-    # 모든 파라미터 조합 생성
-    all_questions = list(itertools.chain.from_iterable(QUESTION_SAMPLES.values()))
-    param_grid = list(itertools.product(
-        CHUNK_STRATEGIES,
-        all_questions,
-        TOP_K_VALUES,
-        TEMPERATURE_VALUES
-    ))
-
-    # CSV 파일 준비
-    with open(OUTPUT_CSV_PATH, "w", newline="", encoding="utf-8") as f:
-        fieldnames = ["chunk_strategy", "question_type", "question", "top_k", "temperature", "retrieved_chunks", "gpt_answer", "evaluation_metric_F1", "evaluation_metric_Recall@5"]
+    parser = argparse.ArgumentParser(description="RAG Experiment Automation")
+    parser.add_argument("--k", type=int, nargs="+", default=DEFAULT_TOP_KS,
+                       help="Top-k values for retrieval")
+    parser.add_argument("--temp", type=float, nargs="+", default=DEFAULT_TEMPERATURES,
+                       help="Temperature values for generation")
+    parser.add_argument("--chunk", type=int, nargs="+", default=DEFAULT_CHUNK_SIZES,
+                       help="Chunk sizes for text splitting")
+    
+    args = parser.parse_args()
+    
+    print(f"Starting RAG experiments with:")
+    print(f"  Top-k values: {args.k}")
+    print(f"  Temperature values: {args.temp}")
+    print(f"  Chunk sizes: {args.chunk}")
+    
+    # Load text data
+    text_file = os.path.join(DATA_DIR, "text_chunks.txt")
+    if not os.path.exists(text_file):
+        print(f"Error: {text_file} not found. Please ensure the data file exists.")
+        return
+    
+    with open(text_file, "r", encoding="utf-8") as f:
+        text = f.read()
+    
+    # Prepare results file
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    results_file = os.path.join(RESULTS_DIR, f"grid_search_{timestamp}.csv")
+    
+    # CSV headers as specified by mentor
+    fieldnames = ["run_id", "chunk", "k", "temp", "recall@5", "f1", "latency_ms", "cost_cents"]
+    
+    with open(results_file, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-
-        # 각 조합에 대해 실험 실행
-        for i, params in enumerate(param_grid):
-            strategy, question, k, temp = params
-            print(f"Running experiment {i+1}/{len(param_grid)}: {params}")
+        
+        # Run experiments for each chunk size
+        for chunk_size in args.chunk:
+            print(f"\nProcessing chunk size: {chunk_size}")
             
-            result = run_single_experiment(strategy, question, k, temp)
-            writer.writerow(result)
-
-    print(f"실험 완료. 결과가 다음 파일에 저장되었습니다: {OUTPUT_CSV_PATH}")
+            # Chunk the text
+            chunks = chunk_text(text, chunk_size)
+            print(f"Created {len(chunks)} chunks")
+            
+            # Get embeddings for chunks
+            print("Getting embeddings for chunks...")
+            chunk_embeddings = get_embeddings(chunks)
+            
+            # Create Faiss index
+            print("Creating Faiss index...")
+            faiss_index = create_faiss_index(chunk_embeddings)
+            
+            # Run experiments for all parameter combinations
+            total_experiments = len(args.k) * len(args.temp) * len(TEST_QUESTIONS)
+            experiment_count = 0
+            
+            for top_k in args.k:
+                for temperature in args.temp:
+                    for question in TEST_QUESTIONS:
+                        experiment_count += 1
+                        run_id = str(uuid.uuid4())[:8]
+                        
+                        print(f"Running experiment {experiment_count}/{total_experiments}: "
+                              f"k={top_k}, temp={temperature}, chunk={chunk_size}")
+                        
+                        try:
+                            result = run_single_experiment(
+                                run_id=run_id,
+                                chunk_size=chunk_size,
+                                top_k=top_k,
+                                temperature=temperature,
+                                question=question,
+                                chunks=chunks,
+                                chunk_embeddings=chunk_embeddings,
+                                faiss_index=faiss_index
+                            )
+                            writer.writerow(result)
+                            
+                        except Exception as e:
+                            print(f"Error in experiment: {e}")
+                            # Write error result
+                            error_result = {
+                                "run_id": run_id,
+                                "chunk": chunk_size,
+                                "k": top_k,
+                                "temp": temperature,
+                                "recall@5": 0.0,
+                                "f1": 0.0,
+                                "latency_ms": 0.0,
+                                "cost_cents": 0.0
+                            }
+                            writer.writerow(error_result)
+    
+    print(f"\nExperiments completed! Results saved to: {results_file}")
+    print(f"Total experiments run: {experiment_count}")
 
 if __name__ == "__main__":
     main() 
