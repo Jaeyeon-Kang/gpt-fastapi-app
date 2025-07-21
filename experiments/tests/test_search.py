@@ -15,10 +15,10 @@ CHUNKS = [
 ]
 
 # 임베딩 함수 (실제 grid_run.py에서 가져온 것과 유사)
-def get_embeddings(texts):
-    # 실제론 openai API를 써야 하지만, 테스트에선 임의 벡터로 대체
-    # (실제 테스트에선 mocking 필요)
-    return np.random.rand(len(texts), 1536).astype('float32')
+def get_embeddings(chunks):
+    import numpy as np
+    np.random.seed(42)  # 시드 고정해서 테스트 결과가 항상 같게 만듦
+    return np.random.rand(len(chunks), 384).astype('float32')
 
 # 인덱스 생성
 def create_faiss_index(embeddings):
