@@ -179,6 +179,8 @@ def main():
                        help="Temperature values for generation")
     parser.add_argument("--chunk", type=int, nargs="+", default=DEFAULT_CHUNK_SIZES,
                        help="Chunk sizes for text splitting")
+    parser.add_argument("--sample", type=int, default=10,
+                       help="Number of samples to run per parameter combination")
     
     args = parser.parse_args()
     
@@ -224,12 +226,12 @@ def main():
             faiss_index = create_faiss_index(chunk_embeddings)
             
             # Run experiments for all parameter combinations
-            total_experiments = len(args.k) * len(args.temp) * len(TEST_QUESTIONS)
+            total_experiments = len(args.k) * len(args.temp) * min(args.sample, len(TEST_QUESTIONS))
             experiment_count = 0
             
             for top_k in args.k:
                 for temperature in args.temp:
-                    for question in TEST_QUESTIONS:
+                    for question in TEST_QUESTIONS[:args.sample]:
                         experiment_count += 1
                         run_id = str(uuid.uuid4())[:8]
                         
