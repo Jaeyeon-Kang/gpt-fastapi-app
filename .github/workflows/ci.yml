@@ -29,7 +29,7 @@ jobs:
         run: python experiments/grid_run.py --k 3 5 --temp 0.2 0.5 --chunk 256 --sample 10
 
       - name: Upload CSV artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: grid_results
           path: experiments/results/*.csv 
