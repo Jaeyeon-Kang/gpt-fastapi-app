@@ -5,7 +5,10 @@ import openai
 import os
 
 # 환경 변수 세팅 (테스트용, 실제 키는 .env에서 가져와야 함)
-openai.api_key = os.getenv("OPENAI_API_KEY", "sk-...dummy")
+api_key = os.getenv("OPENAI_API_KEY")
+if not api_key:
+    raise RuntimeError("OPENAI_API_KEY 환경변수가 설정되어 있지 않습니다!")
+openai.api_key = api_key
 
 # 샘플 데이터 (진짜 짧게)
 CHUNKS = [
