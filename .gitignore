@@ -1,3 +1,20 @@
+# Environment variables
 .env
+
+# Python
 venv/
 __pycache__/
+*.pyc
+
+# IDE / OS specific
+.vscode/
+.idea/
+.DS_Store
+.cursor/
+
+# Log files
+logs/
+*.log
+
+# Experiment results (if you want to ignore them)
+# experiments/results/

@@ -1,118 +1,172 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, JSONResponse
 from openai import OpenAI
 from prompt_template import make_prompt
 from datetime import datetime
 from dotenv import load_dotenv
 from pathlib import Path
 import faiss, numpy as np, csv, os
+import pandas as pd
 from utils.data_loader import load_chunks
+import config # 설정 파일을 불러온다. 이제 하드코딩은 그만.
 
 # ── 환경 및 클라이언트 ─────────────────────────────
-load_dotenv() # 이건 .env 파일에 숨겨둔 비밀 설정(API_KEY 같은 거)을 불러오는 마법 주문이야. 설마 API 키를 코드에 그냥 박아둔 건 아니겠지?
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY")) # OpenAI 님의 능력을 빌릴 수 있게 연결하는 클라이언트. 이제 돈 나갈 일만 남았네.
+load_dotenv()
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 # ─────────────────────────────────────────────────
 
-app = FastAPI() # FastAPI 앱의 본체. 이걸로 API 서버를 만드는 거야. 뭐, 네가 만든다기보단 프레임워크가 다 해주지만.
+app = FastAPI()
+
+# 정적 파일 서빙 설정
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# CORS 미들웨어 추가: 이제 보안을 조금 더 신경 쓴 설정으로.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # allow_origins=["*"] 이건 아무나(모든 웹사이트) 내 서버에 요청을 보낼 수 있게 허락한다는 뜻이야. 보안? 그게 뭐지? 먹는 건가? 나중에 프론트엔드 주소만 콕 집어서 넣어주는 게 좋아.
+    allow_origins=config.ALLOWED_ORIGINS, # config.py에 정의된 주소만 허용
     allow_credentials=True,
-    allow_methods=["*"], # 모든 종류의 HTTP 요청(GET, POST 등)을 허락.
-    allow_headers=["*"] # 모든 종류의 헤더를 허락. 그냥 "다 들어와!" 하고 대문 열어놓은 꼴이야.
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# ── 경로 상수 ──────────────────────────────────────
-# 이런 건 경로를 변수로 빼서 관리하는 좋은 습관이야. 칭찬...해 줄 수도.
-INDEX_PATH = "data/index.faiss" # 벡터 검색을 위한 초고속 인덱스 파일 경로.
-TEXT_PATH  = "data/text_chunks.txt" # RAG의 재료가 되는 원본 텍스트 조각 파일 경로.
-EMBED_MODEL = "text-embedding-3-small" # 텍스트를 벡터로 만들 때 사용할 OpenAI 모델 이름. small? 돈 아끼는 건 좋은 자세지.
-# ─────────────────────────────────────────────────
-
-# ---------- 유틸 ----------
-# 유틸리티 함수들. 여기서부터는 네가 직접 만든 부품들이겠네.
+# ---------- 유틸리티 함수들 ───────────────────────
 def log_chat(ts, user_input, role, temp, reply):
-    # 사용자와 챗봇의 대화 내용을 CSV 파일로 차곡차곡 저장하는 함수. 나중에 문제 생기면 이거부터 까보는 거야.
-    os.makedirs("logs", exist_ok=True) # logs 폴더가 없으면 만들어줘. exist_ok=True는 이미 있어도 에러내지 말라는 뜻. 친절하네.      
-    path = "logs/chat_logs.csv"
-    new  = not Path(path).exists() # 파일이 새로 만들어지는 건지 확인.
-    with open(path, "a", newline="", encoding="utf-8") as f: # "a"는 append 모드. 파일 끝에 계속 이어붙이겠다는 뜻.
-        w = csv.DictWriter(f,
-              ["timestamp","user_input","system_role","temperature","reply"])
-        if new: w.writeheader() # 새 파일이면 맨 위에 컬럼 이름(헤더)을 적어줘.
-        w.writerow({ # 받아온 정보들을 한 줄로 예쁘게 써줘.
+    os.makedirs(config.LOG_DIR, exist_ok=True)
+    path = config.CHAT_LOG_PATH
+    new  = not Path(path).exists()
+    with open(path, "a", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, ["timestamp", "user_input", "system_role", "temperature", "reply"])
+        if new: w.writeheader()
+        w.writerow({
             "timestamp": ts, "user_input": user_input,
             "system_role": role, "temperature": temp, "reply": reply
         })
 
 def ensure_faiss_index():
-    """index.faiss 가 없거나 text 파일이 새로 수정됐으면 자동 생성. 하... 이런 것까지 내가 다 챙겨줘야 하다니."""
-    idx = Path(INDEX_PATH) # 인덱스 파일 경로 객체.
-    txt = Path(TEXT_PATH)  # 텍스트 파일 경로 객체.
-    # 인덱스 파일이 없거나, 텍스트 파일이 인덱스 파일보다 최신이면 (즉, 재료가 바뀌었으면)
-    if (not idx.exists()) or (txt.stat().st_mtime > idx.stat().st_mtime):
-        print("🔄  FAISS 인덱스를 다시 만드는 중... 멍하니 기다리지 말고 커피라도 타 와.")
-        from experiments.generate_embedding import build_index # build_index만 가져오면 돼. load_chunks는 여기 있는 걸 쓸 거니까.
-        chunks = load_chunks() # main.py에 있는 load_chunks 함수를 사용.
-        build_index(chunks) # 텍스트 조각 리스트를 인자로 전달.
-        print("✅  index.faiss 생성 완료. 이제 일할 수 있겠군.")
+    """index.faiss 가 없거나 text 파일이 새로 수정됐으면 자동 생성."""
+    idx_path = Path(config.INDEX_PATH)
+    txt_path = Path(config.TEXT_PATH)
+    if not idx_path.exists() or (txt_path.exists() and txt_path.stat().st_mtime > idx_path.stat().st_mtime):
+        print("🔄 FAISS 인덱스를 다시 만드는 중... 잠시 기다려.")
+        try:
+            from experiments.generate_embedding import build_index
+            chunks = load_chunks()
+            build_index(chunks)
+            print("✅ index.faiss 생성 완료.")
+        except Exception as e:
+            print(f"❌ Faiss 인덱스 생성 실패: {e}")
 
-def embed_text(text:str):
-    # 텍스트 한 조각을 받아서 OpenAI API로 벡터 임베딩을 생성하는 함수.
-    emb = client.embeddings.create(input=text, model=EMBED_MODEL).data[0].embedding
-    # numpy 배열로 변환. Faiss는 이걸 좋아하거든.
-    return np.asarray(emb, dtype="float32").reshape(1, -1)
+def embed_text(text: str):
+    try:
+        emb = client.embeddings.create(input=text, model=config.EMBED_MODEL).data[0].embedding
+        return np.asarray(emb, dtype="float32").reshape(1, -1)
+    except Exception as e:
+        # OpenAI API에서 에러가 나면, 서버가 죽는 대신 클라이언트에게 알려준다.
+        raise HTTPException(status_code=500, detail=f"임베딩 생성 오류: {e}")
 
-# ---------- 라우트 ----------
-# 여기서부터가 진짜 API의 '얼굴'이야. 프론트엔드와 직접 통신하는 부분.
-@app.post("/chat")
-async def chat(req: Request):
-    # 이건 그냥 OpenAI API를 그대로 전달만 해주는 단순한 프록시(대리인) 엔드포인트. RAG 기능은 없어.
-    body   = await req.json() # 요청의 본문(body)을 JSON 형태로 읽어와.
-    prompt = body.get("prompt", "") # 사용자가 보낸 프롬프트. 없으면 빈 문자열.
-    role   = body.get("system_role", "You are a helpful assistant.") # 챗봇의 역할을 정해주는 시스템 프롬프트.
-    temp   = float(body.get("temperature", 0.7)) # 모델의 창의성. 높을수록 이상한 소리를 할 확률 증가.
-
-    messages = make_prompt(prompt, role) # prompt_template.py에 있는 함수로 메시지 형식을 만들어.
-    res = client.chat.completions.create(model="gpt-4-1106-preview", messages=messages, temperature=temp)  # type: ignore
-    reply = res.choices[0].message.content # 뻔질나게 보게 될 OpenAI 응답 구조. 답변 내용만 쏙 빼와.
-    log_chat(datetime.utcnow().isoformat(), prompt, role, temp, reply) # 대화 내용을 잊지 말고 기록.
-    return {"reply": reply} # 사용자에게 최종 답변을 돌려줘.
+# ---------- API 라우트 ─────────────────────────────
+@app.get("/")
+async def read_root():
+    """루트 경로에서 index.html 파일을 서빙한다."""
+    try:
+        with open("static/index.html", "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        # 혹시라도 index.html이 없을 경우를 대비한 친절한 안내.
+        raise HTTPException(status_code=404, detail="index.html 파일을 찾을 수 없습니다.")
 
 @app.post("/search")
 async def search(req: Request):
-    # 이 부분이 바로 네 RAG 시스템의 핵심 로직이 담긴 엔드포인트.
-    body  = await req.json()
-    q     = body.get("question", "") # 사용자의 진짜 질문.
-    top_k = int(body.get("top_k", 3)) # 데이터베이스에서 몇 개의 관련 문서를 찾아올지 결정. 상위 3개.
-    temp  = float(body.get("temperature", 0.7)) # 답변 생성 시 모델의 창의성.
-    sys_p = body.get("system_prompt",
-            "다음 문단들을 참고하여 사용자의 질문에 명확하고 간결하게 답변해주세요.") # RAG를 위한 특수 시스템 프롬프트.
+    """RAG 검색을 수행하고 GPT 답변과 참조 문서를 반환한다."""
+    try:
+        body  = await req.json()
+        q     = body.get("question", "")
+        top_k = int(body.get("top_k", 3))
+        temp  = float(body.get("temperature", 0.7))
+        sys_p = body.get("system_prompt", "다음 문단들을 참고하여 사용자의 질문에 명확하고 간결하게 답변해주세요.")
 
-    # 1) 임베딩 & 검색 - RAG의 'R' (Retrieval) 부분이야.
-    vec   = embed_text(q) # 사용자의 질문을 벡터로 변환.
-    index = faiss.read_index(INDEX_PATH) # 미리 만들어둔 Faiss 인덱스를 불러와.
-    chunks= load_chunks() # 원본 텍스트 조각들도 메모리에 올려.
-    D,I   = index.search(vec, top_k) # Faiss 인덱스에서 질문 벡터와 가장 유사한 녀석들을 k개 찾아! D는 거리, I는 인덱스.
-    top_chunks = [chunks[i] for i in I[0]] # 찾은 인덱스(I)를 가지고, 실제 텍스트 조각(chunks)을 꺼내와.
+        if not q:
+            raise HTTPException(status_code=400, detail="질문이 비어있습니다.")
 
-    # 2) GPT 요약 - RAG의 'G' (Generation) 부분.
-    ctx   = "\n\n".join(top_chunks) # 찾아온 관련 문서 조각들을 하나로 합쳐서 컨텍스트(context)를 만들어.
-    messages = [ # OpenAI에 보낼 최종 프롬프트 조립!
-        {"role":"system","content":sys_p}, # "이런 규칙으로 답변해"
-        {"role":"user"  ,"content":f"{ctx}\n\n질문: {q}"} # "이 내용을 참고해서, 이 질문에 답해"
-    ]
-    ans = client.chat.completions.create(model="gpt-4-1106-preview", messages=messages, temperature=temp).choices[0].message.content.strip() # type: ignore
+        # 1. Retrieval
+        vec = embed_text(q)
+        index = faiss.read_index(config.INDEX_PATH)
+        chunks = load_chunks()
+        D, I = index.search(vec, top_k)
+        top_chunks = [chunks[i] for i in I[0]]
 
-    return { # 프론트엔드에 돌려줄 최종 결과물. 아주 친절하게 검색 결과까지 다 보여주네.
-        "question": q, "top_k": top_k, "temperature": temp,
-        "system_prompt": sys_p,
-        "top_chunks": [
-            {"rank": r+1, "text": chunks[i], "distance": float(D[0][r])}
-            for r,i in enumerate(I[0])
-        ],
-        "gpt_answer": ans
-    }
+        # 2. Generation
+        ctx = "\n\n".join(top_chunks)
+        messages = [
+            {"role": "system", "content": sys_p},
+            {"role": "user", "content": f"{ctx}\n\n질문: {q}"}
+        ]
+        res = client.chat.completions.create(model=config.CHAT_MODEL, messages=messages, temperature=temp)
+        ans = res.choices[0].message.content.strip()
 
-# ---------- 앱 시작 시 인덱스 확인 ----------
-ensure_faiss_index() # 서버가 처음 켜질 때, Faiss 인덱스가 최신 상태인지 확인하고 아니면 새로 만들어. 똑똑한데?
+        return {
+            "question": q,
+            "top_k": top_k,
+            "temperature": temp,
+            "system_prompt": sys_p,
+            "top_chunks": [
+                {"rank": r + 1, "text": chunks[i], "distance": float(D[0][r])}
+                for r, i in enumerate(I[0])
+            ],
+            "gpt_answer": ans
+        }
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="Faiss 인덱스 또는 텍스트 파일을 찾을 수 없습니다.")
+    except Exception as e:
+        # 이제 예상치 못한 에러가 나도 서버는 죽지 않는다.
+        return JSONResponse(status_code=500, content={"message": f"서버 내부 오류: {e}"})
+
+@app.get("/results")
+async def get_results():
+    """실험 결과 CSV 파일을 읽어 JSON으로 반환한다."""
+    try:
+        results_dir = Path("experiments/results")
+        csv_files = sorted(results_dir.glob("grid_search_*.csv"), key=os.path.getmtime, reverse=True)
+        if not csv_files:
+            raise FileNotFoundError
+
+        latest_csv = csv_files[0]
+        df = pd.read_csv(latest_csv)
+        
+        # 실제 CSV 헤더에 맞게 열 이름 수정
+        # 'Recall@5' -> 'recall@5'
+        # 'F1 Score' -> 'f1'
+        # 'Latency(ms)' -> 'latency_ms'
+        # 'Cost($)' -> 'cost_cents' (단위가 센트이므로 달러로 변환 필요)
+        
+        # 소수점 둘째자리까지 반올림하고 달러로 변환
+        if 'cost_cents' in df.columns:
+            df['cost_dollars'] = (df['cost_cents']).round(4)
+
+        # 상위 10개 결과 선택
+        top_10 = df.nlargest(10, ['recall@5', 'f1']).to_dict(orient='records')
+
+        # 전체 요약 정보 계산
+        summary = {
+            "total_experiments": len(df),
+            "best_recall": df['recall@5'].max(),
+            "best_f1": df['f1'].max(),
+            "avg_latency_ms": df['latency_ms'].mean(),
+            "avg_cost": df['cost_dollars'].mean() if 'cost_dollars' in df.columns else df['cost_cents'].mean(),
+            "perfect_scores": len(df[(df['recall@5'] == 1.0) & (df['f1'] == 1.0)])
+        }
+        
+        return {"summary": summary, "top_results": top_10}
+
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="실험 결과 파일을 찾을 수 없습니다.")
+    except KeyError as e:
+        # 특정 컬럼이 없을 때 발생하는 에러를 좀 더 명확하게 알려준다.
+        raise HTTPException(status_code=500, detail=f"결과 파일에서 필요한 열을 찾을 수 없습니다: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"결과 처리 중 오류 발생: {e}")
+
+# ---------- 앱 시작 시 인덱스 확인 ─────────────────
+ensure_faiss_index()
