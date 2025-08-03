@@ -24,3 +24,5 @@ faiss-cpu
 pytest
 tiktoken
 langchain
+pandas
+
