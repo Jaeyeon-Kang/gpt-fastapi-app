@@ -135,20 +135,11 @@ async def get_results():
         latest_csv = csv_files[0]
         df = pd.read_csv(latest_csv)
         
-        # 실제 CSV 헤더에 맞게 열 이름 수정
-        # 'Recall@5' -> 'recall@5'
-        # 'F1 Score' -> 'f1'
-        # 'Latency(ms)' -> 'latency_ms'
-        # 'Cost($)' -> 'cost_cents' (단위가 센트이므로 달러로 변환 필요)
-        
-        # 소수점 둘째자리까지 반올림하고 달러로 변환
         if 'cost_cents' in df.columns:
             df['cost_dollars'] = (df['cost_cents']).round(4)
 
-        # 상위 10개 결과 선택
         top_10 = df.nlargest(10, ['recall@5', 'f1']).to_dict(orient='records')
 
-        # 전체 요약 정보 계산
         summary = {
             "total_experiments": len(df),
             "best_recall": df['recall@5'].max(),
@@ -158,12 +149,13 @@ async def get_results():
             "perfect_scores": len(df[(df['recall@5'] == 1.0) & (df['f1'] == 1.0)])
         }
         
-        return {"summary": summary, "top_results": top_10}
+        # 브라우저가 응답을 캐싱하지 않도록 헤더 추가
+        headers = {"Cache-Control": "no-cache, no-store, must-revalidate"}
+        return JSONResponse(content={"summary": summary, "top_results": top_10}, headers=headers)
 
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="실험 결과 파일을 찾을 수 없습니다.")
     except KeyError as e:
-        # 특정 컬럼이 없을 때 발생하는 에러를 좀 더 명확하게 알려준다.
         raise HTTPException(status_code=500, detail=f"결과 파일에서 필요한 열을 찾을 수 없습니다: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"결과 처리 중 오류 발생: {e}")
