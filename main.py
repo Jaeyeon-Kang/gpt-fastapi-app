@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -7,10 +7,13 @@ from prompt_template import make_prompt
 from datetime import datetime
 from dotenv import load_dotenv
 from pathlib import Path
-import faiss, numpy as np, csv, os
+import faiss, numpy as np, csv, os, time
 import pandas as pd
 from utils.data_loader import load_chunks
 import config # 설정 파일을 불러온다. 이제 하드코딩은 그만.
+import PyPDF2
+from docx import Document
+import io
 
 # ── 환경 및 클라이언트 ─────────────────────────────
 load_dotenv()
@@ -65,6 +68,94 @@ def embed_text(text: str):
     except Exception as e:
         # OpenAI API에서 에러가 나면, 서버가 죽는 대신 클라이언트에게 알려준다.
         raise HTTPException(status_code=500, detail=f"임베딩 생성 오류: {e}")
+
+# ---------- 파일 업로드 처리 함수들 ─────────────────
+def extract_text_from_file(file: UploadFile) -> str:
+    """파일에서 텍스트를 추출합니다."""
+    try:
+        content = file.file.read()
+        
+        if file.filename.endswith('.txt'):
+            return content.decode('utf-8')
+        
+        elif file.filename.endswith('.pdf'):
+            pdf_reader = PyPDF2.PdfReader(io.BytesIO(content))
+            text = ""
+            for page in pdf_reader.pages:
+                text += page.extract_text() + "\n"
+            return text
+        
+        elif file.filename.endswith('.docx'):
+            doc = Document(io.BytesIO(content))
+            text = ""
+            for paragraph in doc.paragraphs:
+                text += paragraph.text + "\n"
+            return text
+        
+        elif file.filename.endswith('.csv'):
+            # CSV를 텍스트로 변환
+            csv_text = content.decode('utf-8')
+            return csv_text
+        
+        else:
+            raise ValueError(f"지원하지 않는 파일 형식: {file.filename}")
+            
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"파일 처리 오류: {str(e)}")
+
+def chunk_text(text: str, chunk_size: int, chunk_overlap: int) -> list:
+    """텍스트를 청크로 나눕니다."""
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
+    
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        length_function=len,
+        separators=["\n\n", "\n", ". ", " ", ""]
+    )
+    return text_splitter.split_text(text)
+
+def rebuild_index(chunks: list) -> dict:
+    """새로운 청크들로 FAISS 인덱스를 재구성합니다."""
+    try:
+        # 기존 청크 로드
+        existing_chunks = load_chunks()
+        
+        # 새 청크 추가
+        all_chunks = existing_chunks + chunks
+        
+        # 임베딩 생성
+        print(f"🔄 {len(all_chunks)}개 청크의 임베딩을 생성하는 중...")
+        embeddings = []
+        for i, chunk in enumerate(all_chunks):
+            if i % 10 == 0:
+                print(f"진행률: {i}/{len(all_chunks)}")
+            emb = client.embeddings.create(input=chunk, model=config.EMBED_MODEL).data[0].embedding
+            embeddings.append(emb)
+        
+        embeddings = np.array(embeddings, dtype='float32')
+        
+        # FAISS 인덱스 생성
+        dimension = embeddings.shape[1]
+        index = faiss.IndexFlatIP(dimension)
+        index.add(embeddings)
+        
+        # 인덱스 저장
+        faiss.write_index(index, config.INDEX_PATH)
+        
+        # 새 청크들을 텍스트 파일에 추가
+        with open(config.TEXT_PATH, 'a', encoding='utf-8') as f:
+            for chunk in chunks:
+                f.write(chunk + '\n')
+        
+        return {
+            "total_chunks": len(all_chunks),
+            "new_chunks": len(chunks),
+            "index_size_mb": os.path.getsize(config.INDEX_PATH) / (1024 * 1024)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"인덱스 재구성 오류: {str(e)}")
 
 # ---------- API 라우트 ─────────────────────────────
 @app.get("/")
@@ -122,6 +213,61 @@ async def search(req: Request):
     except Exception as e:
         # 이제 예상치 못한 에러가 나도 서버는 죽지 않는다.
         return JSONResponse(status_code=500, content={"message": f"서버 내부 오류: {e}"})
+
+@app.post("/upload")
+async def upload_files(
+    files: list[UploadFile] = File(...),
+    chunk_size: int = Form(512),
+    chunk_overlap: int = Form(100)
+):
+    """파일을 업로드하고 RAG 시스템에 추가합니다."""
+    try:
+        start_time = time.time()
+        
+        if not files:
+            raise HTTPException(status_code=400, detail="업로드할 파일이 없습니다.")
+        
+        all_chunks = []
+        processed_files = 0
+        
+        for file in files:
+            if not file.filename:
+                continue
+                
+            # 파일 크기 제한 (10MB)
+            if file.size > 10 * 1024 * 1024:
+                raise HTTPException(status_code=400, detail=f"파일 크기가 너무 큽니다: {file.filename}")
+            
+            # 텍스트 추출
+            text = extract_text_from_file(file)
+            
+            # 청킹
+            chunks = chunk_text(text, chunk_size, chunk_overlap)
+            all_chunks.extend(chunks)
+            processed_files += 1
+            
+            print(f"✅ {file.filename} 처리 완료: {len(chunks)}개 청크 생성")
+        
+        if not all_chunks:
+            raise HTTPException(status_code=400, detail="처리할 수 있는 텍스트가 없습니다.")
+        
+        # 인덱스 재구성
+        index_info = rebuild_index(all_chunks)
+        
+        processing_time = time.time() - start_time
+        
+        return {
+            "files_processed": processed_files,
+            "chunks_created": len(all_chunks),
+            "processing_time": round(processing_time, 2),
+            "index_size": round(index_info["index_size_mb"], 2),
+            "total_chunks": index_info["total_chunks"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"업로드 처리 중 오류 발생: {str(e)}")
 
 @app.get("/results")
 async def get_results():
