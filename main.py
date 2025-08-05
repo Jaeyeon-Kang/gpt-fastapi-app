@@ -269,6 +269,72 @@ async def upload_files(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"업로드 처리 중 오류 발생: {str(e)}")
 
+@app.post("/add-text")
+async def add_text_document(
+    title: str = Form(...),
+    content: str = Form(...),
+    chunk_size: int = Form(512),
+    chunk_overlap: int = Form(100)
+):
+    """텍스트를 직접 입력하여 RAG 시스템에 추가합니다."""
+    try:
+        start_time = time.time()
+        
+        # 입력 검증
+        if not title or not title.strip():
+            raise HTTPException(status_code=400, detail="문서 제목을 입력해주세요.")
+        
+        if not content or not content.strip():
+            raise HTTPException(status_code=400, detail="문서 내용을 입력해주세요.")
+        
+        # 제목 길이 제한
+        if len(title.strip()) > 200:
+            raise HTTPException(status_code=400, detail="문서 제목이 너무 깁니다. 200자 이하로 입력해주세요.")
+        
+        # 텍스트 길이 제한 (1MB)
+        content_bytes = content.encode('utf-8')
+        if len(content_bytes) > 1024 * 1024:
+            raise HTTPException(status_code=400, detail="텍스트가 너무 깁니다. 1MB 이하로 입력해주세요.")
+        
+        # 청킹 파라미터 검증
+        if chunk_size < 100 or chunk_size > 2000:
+            raise HTTPException(status_code=400, detail="청크 크기는 100-2000 사이여야 합니다.")
+        
+        if chunk_overlap < 0 or chunk_overlap >= chunk_size:
+            raise HTTPException(status_code=400, detail="청크 겹침은 0 이상이고 청크 크기보다 작아야 합니다.")
+        
+        # 청킹
+        chunks = chunk_text(content, chunk_size, chunk_overlap)
+        
+        if not chunks:
+            raise HTTPException(status_code=400, detail="처리할 수 있는 텍스트가 없습니다.")
+        
+        # 인덱스 재구성
+        index_info = rebuild_index(chunks)
+        
+        processing_time = time.time() - start_time
+        
+        # 로깅 개선
+        print(f"✅ 텍스트 문서 처리 완료:")
+        print(f"   - 제목: {title}")
+        print(f"   - 청크 수: {len(chunks)}개")
+        print(f"   - 처리 시간: {processing_time:.2f}초")
+        print(f"   - 인덱스 크기: {index_info['index_size_mb']:.2f}MB")
+        
+        return {
+            "title": title,
+            "chunks_created": len(chunks),
+            "processing_time": round(processing_time, 2),
+            "index_size": round(index_info["index_size_mb"], 2),
+            "total_chunks": index_info["total_chunks"],
+            "content_size_bytes": len(content_bytes)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"텍스트 처리 중 오류 발생: {str(e)}")
+
 @app.get("/results")
 async def get_results():
     """실험 결과 CSV 파일을 읽어 JSON으로 반환한다."""
@@ -308,3 +374,8 @@ async def get_results():
 
 # ---------- 앱 시작 시 인덱스 확인 ─────────────────
 ensure_faiss_index()
+
+# ---------- 서버 실행 ─────────────────────────────
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

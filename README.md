@@ -24,20 +24,40 @@ FastAPI 기반의 RAG 시스템에서 chunking, top-k, temperature 파라미터�
 
 > 🔗 **실시간 데모**: [https://gpt-fastapi-app.onrender.com/](https://gpt-fastapi-app.onrender.com/)
 
+### 환경 설정
+
+1. **환경 변수 설정**
+   ```bash
+   # .env 파일 생성
+   cp .env.example .env
+   
+   # .env 파일을 편집하여 실제 API 키 입력
+   # OPENAI_API_KEY=sk-your_actual_api_key_here
+   ```
+
+   ⚠️ **보안 주의사항**: `.env` 파일은 절대 Git에 커밋하지 마세요!
+
+2. **OpenAI API 키 발급**
+   - [OpenAI Platform](https://platform.openai.com/api-keys)에서 API 키 발급
+   - `.env` 파일에 `OPENAI_API_KEY=sk-...` 형태로 입력
+
 ### 로컬 실행
 ```bash
 # 1. 의존성 설치
 pip install -r requirements.txt
 
-# 2. 환경 변수 설정 (.env 파일 생성)
-echo "OPENAI_API_KEY=your_api_key_here" > .env
+# 2. 서버 실행
+python main.py
 
-# 3. 서버 실행
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-
-# 4. 웹 인터페이스 접속
+# 3. 웹 인터페이스 접속
 # 브라우저에서 http://localhost:8000 주소로 접속
 ```
+
+### 새로운 기능: 텍스트 직접 입력
+- **📝 텍스트 입력 탭**: 파일 업로드 없이 직접 텍스트 입력
+- **실시간 글자 수 카운터**: 입력 중인 텍스트의 길이 표시
+- **향상된 검증**: 제목 길이, 텍스트 크기 제한
+- **알림 시스템**: 성공/에러/경고 메시지 표시
 
 ---
 
