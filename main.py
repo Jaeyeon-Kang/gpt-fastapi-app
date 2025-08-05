@@ -269,6 +269,53 @@ async def upload_files(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"업로드 처리 중 오류 발생: {str(e)}")
 
+@app.post("/add-text")
+async def add_text_document(
+    title: str = Form(...),
+    content: str = Form(...),
+    chunk_size: int = Form(512),
+    chunk_overlap: int = Form(100)
+):
+    """텍스트를 직접 입력하여 RAG 시스템에 추가합니다."""
+    try:
+        start_time = time.time()
+        
+        if not title.strip():
+            raise HTTPException(status_code=400, detail="문서 제목을 입력해주세요.")
+        
+        if not content.strip():
+            raise HTTPException(status_code=400, detail="문서 내용을 입력해주세요.")
+        
+        # 텍스트 길이 제한 (1MB)
+        if len(content.encode('utf-8')) > 1024 * 1024:
+            raise HTTPException(status_code=400, detail="텍스트가 너무 깁니다. 1MB 이하로 입력해주세요.")
+        
+        # 청킹
+        chunks = chunk_text(content, chunk_size, chunk_overlap)
+        
+        if not chunks:
+            raise HTTPException(status_code=400, detail="처리할 수 있는 텍스트가 없습니다.")
+        
+        # 인덱스 재구성
+        index_info = rebuild_index(chunks)
+        
+        processing_time = time.time() - start_time
+        
+        print(f"✅ 텍스트 문서 '{title}' 처리 완료: {len(chunks)}개 청크 생성")
+        
+        return {
+            "title": title,
+            "chunks_created": len(chunks),
+            "processing_time": round(processing_time, 2),
+            "index_size": round(index_info["index_size_mb"], 2),
+            "total_chunks": index_info["total_chunks"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"텍스트 처리 중 오류 발생: {str(e)}")
+
 @app.get("/results")
 async def get_results():
     """실험 결과 CSV 파일을 읽어 JSON으로 반환한다."""
@@ -308,3 +355,8 @@ async def get_results():
 
 # ---------- 앱 시작 시 인덱스 확인 ─────────────────
 ensure_faiss_index()
+
+# ---------- 서버 실행 ─────────────────────────────
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
