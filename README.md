@@ -35,6 +35,8 @@ FastAPI 기반의 RAG 시스템에서 chunking, top-k, temperature 파라미터�
    # OPENAI_API_KEY=sk-your_actual_api_key_here
    ```
 
+   ⚠️ **보안 주의사항**: `.env` 파일은 절대 Git에 커밋하지 마세요!
+
 2. **OpenAI API 키 발급**
    - [OpenAI Platform](https://platform.openai.com/api-keys)에서 API 키 발급
    - `.env` 파일에 `OPENAI_API_KEY=sk-...` 형태로 입력
