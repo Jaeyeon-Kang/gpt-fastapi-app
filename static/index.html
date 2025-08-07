@@ -480,10 +480,10 @@
         </div>
         
         <nav class="tab-navigation" role="tablist" aria-label="메인 기능 탭">
-            <button class="tab-btn active" onclick="showTab('rag')" role="tab" aria-selected="true" aria-controls="rag">RAG 테스트</button>
-            <button class="tab-btn" onclick="showTab('text-input')" role="tab" aria-selected="false" aria-controls="text-input">텍스트 입력</button>
-            <button class="tab-btn" onclick="showTab('upload')" role="tab" aria-selected="false" aria-controls="upload">문서 업로드</button>
-            <button class="tab-btn" onclick="showTab('results')" role="tab" aria-selected="false" aria-controls="results">실험 결과</button>
+            <button class="tab-btn active" onclick="showTab('rag', event)" role="tab" aria-selected="true" aria-controls="rag">RAG 테스트</button>
+            <button class="tab-btn" onclick="showTab('text-input', event)" role="tab" aria-selected="false" aria-controls="text-input">텍스트 입력</button>
+            <button class="tab-btn" onclick="showTab('upload', event)" role="tab" aria-selected="false" aria-controls="upload">문서 업로드</button>
+            <button class="tab-btn" onclick="showTab('results', event)" role="tab" aria-selected="false" aria-controls="results">실험 결과</button>
         </nav>
         
         <!-- RAG 테스트 탭 -->
@@ -673,7 +673,7 @@
         */
         
         // --- 탭 관리 ---
-        function showTab(tabId) {
+        function showTab(tabId, event) {
             try {
                 // 모든 탭 콘텐츠 비활성화
                 document.querySelectorAll('.tab-content').forEach(tab => {
@@ -689,7 +689,7 @@
                 
                 // 선택된 탭 활성화
                 const targetTab = document.getElementById(tabId);
-                const targetBtn = event.currentTarget;
+                const targetBtn = event ? event.currentTarget : document.querySelector(`[onclick*="${tabId}"]`);
                 
                 if (targetTab && targetBtn) {
                     targetTab.classList.add('active');
