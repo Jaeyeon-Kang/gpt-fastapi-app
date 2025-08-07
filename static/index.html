@@ -423,23 +423,73 @@
             color: #6c757d;
             margin-top: 5px;
         }
+        
+        .guide-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #007bff;
+        }
+        
+        .guide-section h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 18px;
+        }
+        
+        .guide-steps {
+            display: grid;
+            gap: 10px;
+        }
+        
+        .step {
+            padding: 8px 0;
+            color: #555;
+            font-size: 14px;
+        }
+        
+        .step strong {
+            color: #007bff;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🧠 VectorMind - 벡터 + 마인드의 조합</h1>
+        <h1>VectorMind - 벡터 + 마인드의 조합</h1>
+        
+        <div class="guide-section">
+            <h3>사용법 가이드</h3>
+            <div class="guide-steps">
+                <div class="step">
+                    <strong>1단계:</strong> 문서 준비 (PDF, Word, 텍스트 파일) 또는 텍스트 직접 입력
+                </div>
+                <div class="step">
+                    <strong>2단계:</strong> "문서 업로드" 또는 "텍스트 입력" 탭에서 내용 추가
+                </div>
+                <div class="step">
+                    <strong>3단계:</strong> "RAG 테스트" 탭에서 문서에 대한 질문 입력
+                </div>
+                <div class="step">
+                    <strong>4단계:</strong> 설정 조정 (Top-k, Temperature) 후 질문하기
+                </div>
+                <div class="step">
+                    <strong>5단계:</strong> AI 답변과 참조 문서 확인
+                </div>
+            </div>
+        </div>
         
         <nav class="tab-navigation" role="tablist" aria-label="메인 기능 탭">
-            <button class="tab-btn active" onclick="showTab('rag')" role="tab" aria-selected="true" aria-controls="rag">🔍 RAG 테스트</button>
-            <button class="tab-btn" onclick="showTab('text-input')" role="tab" aria-selected="false" aria-controls="text-input">📝 텍스트 입력</button>
-            <button class="tab-btn" onclick="showTab('upload')" role="tab" aria-selected="false" aria-controls="upload">📁 문서 업로드</button>
-            <button class="tab-btn" onclick="showTab('results')" role="tab" aria-selected="false" aria-controls="results">📊 실험 결과</button>
+            <button class="tab-btn active" onclick="showTab('rag')" role="tab" aria-selected="true" aria-controls="rag">RAG 테스트</button>
+            <button class="tab-btn" onclick="showTab('text-input')" role="tab" aria-selected="false" aria-controls="text-input">텍스트 입력</button>
+            <button class="tab-btn" onclick="showTab('upload')" role="tab" aria-selected="false" aria-controls="upload">문서 업로드</button>
+            <button class="tab-btn" onclick="showTab('results')" role="tab" aria-selected="false" aria-controls="results">실험 결과</button>
         </nav>
         
         <!-- RAG 테스트 탭 -->
         <div id="rag" class="tab-content active">
             <div class="input-section">
-                <textarea class="question-input" id="questionInput" placeholder="질문을 입력하세요... (예: 인공지능이 뭔가요?)" rows="3"></textarea>
+                <textarea class="question-input" id="questionInput" placeholder="질문을 입력하세요... (예: 이 문서의 주요 내용은 무엇인가요?)" rows="3"></textarea>
                 <div class="parameters">
                     <div class="param-group">
                         <label for="topK">Top-k (문서 수)</label>
@@ -469,12 +519,12 @@
             
             <div id="responseSection" class="response-section" style="display: none;">
                 <div class="response-card">
-                    <h3>🤖 GPT 답변</h3>
+                    <h3>GPT 답변</h3>
                     <div id="gptAnswer"></div>
                     <div class="metrics" id="metrics"></div>
                 </div>
                 <div class="response-card">
-                    <h3>📚 참조된 문서</h3>
+                    <h3>참조된 문서</h3>
                     <div id="chunksSection" class="chunks-section"></div>
                 </div>
             </div>
@@ -483,13 +533,13 @@
         <!-- 문서 업로드 탭 -->
         <div id="upload" class="tab-content">
             <div class="upload-section">
-                <h3>📁 문서 업로드</h3>
+                <h3>문서 업로드</h3>
                 <p>새로운 문서를 업로드하여 RAG 시스템에 추가하세요.</p>
                 
                 <div class="upload-area">
                     <input type="file" id="fileInput" accept=".txt,.pdf,.docx,.csv" multiple style="display: none;">
                     <div class="file-drop-zone" onclick="document.getElementById('fileInput').click()">
-                        <div class="upload-icon">📄</div>
+                        <div class="upload-icon">파일</div>
                         <p>파일을 클릭하거나 여기로 드래그하세요</p>
                         <p class="file-types">지원 형식: TXT, PDF, DOCX, CSV</p>
                     </div>
@@ -583,7 +633,7 @@
                 </div>
                 
                 <div id="textResult" class="upload-result" style="display: none;">
-                    <h4>✅ 텍스트 추가 완료!</h4>
+                    <h4>텍스트 추가 완료!</h4>
                     <div id="textSummary"></div>
                 </div>
             </div>
@@ -592,12 +642,12 @@
         <!-- 실험 결과 탭 -->
         <div id="results" class="tab-content">
             <div class="results-section">
-                <h3>📈 실험 결과 요약</h3>
+                <h3>실험 결과 요약</h3>
                 <div id="summaryStats" class="summary-stats">
                     <!-- JavaScript로 동적 생성 -->
                 </div>
                 
-                <h4>🏆 Top 10 성능 결과</h4>
+                <h4>Top 10 성능 결과</h4>
                 <div class="table-container">
                     <table id="resultsTable">
                         <thead>
