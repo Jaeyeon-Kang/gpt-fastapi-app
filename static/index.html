@@ -495,11 +495,51 @@
             background: #e9ecef;
             color: #495057;
         }
+        
+        .header-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .language-toggle {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .lang-btn {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            color: #6c757d;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+        
+        .lang-btn.active {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        
+        .lang-btn:hover:not(.active) {
+            background: #e9ecef;
+            color: #495057;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>VectorMind</h1>
+        <div class="header-section">
+            <h1>VectorMind</h1>
+            <div class="language-toggle">
+                <button class="lang-btn active" data-lang="ko">한국어</button>
+                <button class="lang-btn" data-lang="en">English</button>
+            </div>
+        </div>
         <div class="hero-section">
             <h2>산더미 같은 문서, AI에게 맡기고 1초 만에 답을 찾으세요</h2>
             <p class="hero-description">
@@ -694,6 +734,190 @@
         🔧 RAG 시스템 프론트엔드 JavaScript
         ========================================
         */
+        
+        // --- 다국어 지원 ---
+        const translations = {
+            ko: {
+                hero_title: "산더미 같은 문서, AI에게 맡기고 1초 만에 답을 찾으세요",
+                hero_description: "당신의 논문, 보고서, 법률 문서를 통째로 학습한 AI가 어떤 질문에도 핵심만 정확히 찾아드립니다. 더 이상 Ctrl+F로 시간 낭비하지 마세요.",
+                guide_title: "간단한 3단계로 시작하세요",
+                step1: "문서 업로드 (PDF, Word, 텍스트 파일) 또는 직접 텍스트 입력",
+                step2: "문서에 대해 궁금한 것을 자연스럽게 질문하기",
+                step3: "AI가 문서를 분석해서 정확한 답변 제공받기",
+                ask_ai: "AI에게 질문하기",
+                text_input: "텍스트 입력",
+                upload_docs: "문서 업로드",
+                question_placeholder: "질문을 입력하세요... (예: 이 문서의 주요 내용은 무엇인가요?)",
+                advanced_settings: "고급 설정",
+                hide_advanced: "고급 설정 숨기기",
+                doc_count: "참고할 문서 개수",
+                answer_style: "답변 스타일",
+                ai_role: "AI 역할 설정",
+                ai_role_placeholder: "AI에게 특별한 역할을 지정하세요...",
+                concise: "정확하고 간결하게",
+                balanced: "균형잡힌 답변",
+                creative: "창의적이고 자세하게",
+                ask_button: "질문하기",
+                loading: "답변을 생성하는 중입니다...",
+                gpt_answer: "GPT 답변",
+                referenced_docs: "참조된 문서",
+                upload_title: "문서 업로드",
+                upload_desc: "새로운 문서를 업로드하여 RAG 시스템에 추가하세요.",
+                file_drop: "파일을 클릭하거나 여기로 드래그하세요",
+                supported_formats: "지원 형식: TXT, PDF, DOCX, CSV",
+                chunk_size: "청크 크기 (문자 수)",
+                chunk_overlap: "청크 겹침 (문자 수)",
+                upload_button: "문서 업로드",
+                processing: "처리 중...",
+                text_title: "텍스트 입력",
+                text_desc: "직접 텍스트를 입력하여 RAG 시스템에 추가하세요.",
+                doc_title: "문서 제목",
+                doc_content: "문서 내용",
+                content_placeholder: "문서의 전체 내용을 여기에 입력하세요...",
+                add_text: "텍스트 추가",
+                text_added: "텍스트 추가 완료!",
+                error_title: "문서 제목을 입력해주세요.",
+                error_content: "문서 내용을 입력해주세요.",
+                error_size: "문서 내용이 너무 큽니다. 1MB 이하로 입력해주세요.",
+                error_required: "필수 입력 요소를 찾을 수 없습니다.",
+                error_upload: "업로드할 파일을 선택해주세요.",
+                error_question: "질문을 입력해주세요.",
+                error_text_add: "텍스트 추가 중 오류가 발생했습니다: "
+            },
+            en: {
+                hero_title: "Let AI handle your document mountain and find answers in 1 second",
+                hero_description: "AI that learns your papers, reports, and legal documents completely finds the core accurately for any question. No more wasting time with Ctrl+F.",
+                guide_title: "Start with 3 simple steps",
+                step1: "Upload documents (PDF, Word, text files) or enter text directly",
+                step2: "Ask questions naturally about what you're curious about",
+                step3: "Get accurate answers as AI analyzes the documents",
+                ask_ai: "Ask AI",
+                text_input: "Text Input",
+                upload_docs: "Upload Documents",
+                question_placeholder: "Enter your question... (e.g., What is the main content of this document?)",
+                advanced_settings: "Advanced Settings",
+                hide_advanced: "Hide Advanced Settings",
+                doc_count: "Number of documents to reference",
+                answer_style: "Answer style",
+                ai_role: "AI role setting",
+                ai_role_placeholder: "Specify a special role for AI...",
+                concise: "Accurate and concise",
+                balanced: "Balanced answer",
+                creative: "Creative and detailed",
+                ask_button: "Ask Question",
+                loading: "Generating answer...",
+                gpt_answer: "GPT Answer",
+                referenced_docs: "Referenced Documents",
+                upload_title: "Upload Documents",
+                upload_desc: "Upload new documents to add to the RAG system.",
+                file_drop: "Click files or drag them here",
+                supported_formats: "Supported formats: TXT, PDF, DOCX, CSV",
+                chunk_size: "Chunk size (characters)",
+                chunk_overlap: "Chunk overlap (characters)",
+                upload_button: "Upload Documents",
+                processing: "Processing...",
+                text_title: "Text Input",
+                text_desc: "Enter text directly to add to the RAG system.",
+                doc_title: "Document Title",
+                doc_content: "Document Content",
+                content_placeholder: "Enter the full content of the document here...",
+                add_text: "Add Text",
+                text_added: "Text added successfully!",
+                error_title: "Please enter a document title.",
+                error_content: "Please enter document content.",
+                error_size: "Document content is too large. Please enter less than 1MB.",
+                error_required: "Required input elements not found.",
+                error_upload: "Please select files to upload.",
+                error_question: "Please enter a question.",
+                error_text_add: "Error occurred while adding text: "
+            }
+        };
+        
+        let currentLang = 'ko';
+        
+        // --- 언어 전환 함수 ---
+        function changeLanguage(lang) {
+            console.log('=== 언어 전환 시작 ===');
+            console.log('전환할 언어:', lang);
+            
+            currentLang = lang;
+            
+            // 언어 버튼 상태 업데이트
+            document.querySelectorAll('.lang-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector(`[data-lang="${lang}"]`).classList.add('active');
+            
+            // 텍스트 업데이트
+            updateTexts();
+            
+            console.log('언어 전환 완료');
+        }
+        
+        // --- 텍스트 업데이트 함수 ---
+        function updateTexts() {
+            const t = translations[currentLang];
+            
+            // 히어로 섹션
+            document.querySelector('.hero-section h2').textContent = t.hero_title;
+            document.querySelector('.hero-description').textContent = t.hero_description;
+            
+            // 가이드 섹션
+            document.querySelector('.guide-section h3').textContent = t.guide_title;
+            document.querySelectorAll('.step')[0].innerHTML = `<strong>1단계:</strong> ${t.step1}`;
+            document.querySelectorAll('.step')[1].innerHTML = `<strong>2단계:</strong> ${t.step2}`;
+            document.querySelectorAll('.step')[2].innerHTML = `<strong>3단계:</strong> ${t.step3}`;
+            
+            // 탭 버튼
+            document.querySelector('[data-tab="rag"]').textContent = t.ask_ai;
+            document.querySelector('[data-tab="text-input"]').textContent = t.text_input;
+            document.querySelector('[data-tab="upload"]').textContent = t.upload_docs;
+            
+            // 질문 입력
+            document.getElementById('questionInput').placeholder = t.question_placeholder;
+            
+            // 고급 설정
+            const advancedToggle = document.getElementById('advancedToggle');
+            if (advancedToggle) {
+                advancedToggle.textContent = t.advanced_settings;
+            }
+            
+            // 고급 설정 옵션들
+            const topKLabel = document.querySelector('label[for="topK"]');
+            if (topKLabel) topKLabel.textContent = t.doc_count;
+            
+            const tempLabel = document.querySelector('label[for="temperature"]');
+            if (tempLabel) tempLabel.textContent = t.answer_style;
+            
+            const promptLabel = document.querySelector('label[for="systemPrompt"]');
+            if (promptLabel) promptLabel.textContent = t.ai_role;
+            
+            const promptTextarea = document.getElementById('systemPrompt');
+            if (promptTextarea) promptTextarea.placeholder = t.ai_role_placeholder;
+            
+            // 옵션 값들
+            const tempOptions = document.querySelectorAll('#temperature option');
+            if (tempOptions.length >= 3) {
+                tempOptions[0].textContent = t.concise;
+                tempOptions[1].textContent = t.balanced;
+                tempOptions[2].textContent = t.creative;
+            }
+            
+            // 질문하기 버튼
+            const submitBtn = document.getElementById('submitBtn');
+            if (submitBtn) submitBtn.textContent = t.ask_button;
+            
+            // 로딩 메시지
+            const loading = document.getElementById('loading');
+            if (loading) loading.textContent = t.loading;
+            
+            // 응답 섹션
+            const gptAnswer = document.querySelector('#responseSection h3');
+            if (gptAnswer) gptAnswer.textContent = t.gpt_answer;
+            
+            const referencedDocs = document.querySelectorAll('#responseSection h3')[1];
+            if (referencedDocs) referencedDocs.textContent = t.referenced_docs;
+        }
         
         // --- 탭 관리 ---
         function showTab(tabId) {
@@ -1208,6 +1432,15 @@
         // --- 이벤트 리스너 ---
         document.addEventListener('DOMContentLoaded', function() {
             console.log('DOMContentLoaded 이벤트 발생');
+            
+            // 언어 전환 버튼 이벤트 리스너
+            document.querySelectorAll('.lang-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const lang = this.getAttribute('data-lang');
+                    console.log('언어 전환 버튼 클릭됨:', lang);
+                    changeLanguage(lang);
+                });
+            });
             
             // 탭 버튼 이벤트 리스너
             const tabButtons = document.querySelectorAll('.tab-btn');
