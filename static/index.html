@@ -698,16 +698,23 @@
         // --- 탭 관리 ---
         function showTab(tabId) {
             try {
-                console.log('showTab called with:', tabId);
+                console.log('=== showTab 함수 시작 ===');
+                console.log('전달받은 tabId:', tabId);
                 
                 // 모든 탭 콘텐츠 비활성화
-                document.querySelectorAll('.tab-content').forEach(tab => {
+                const allTabs = document.querySelectorAll('.tab-content');
+                console.log('찾은 탭 콘텐츠 개수:', allTabs.length);
+                allTabs.forEach((tab, index) => {
+                    console.log(`탭 ${index} 비활성화:`, tab.id);
                     tab.classList.remove('active');
                     tab.setAttribute('aria-hidden', 'true');
                 });
                 
                 // 모든 탭 버튼 비활성화
-                document.querySelectorAll('.tab-btn').forEach(btn => {
+                const allButtons = document.querySelectorAll('.tab-btn');
+                console.log('찾은 탭 버튼 개수:', allButtons.length);
+                allButtons.forEach((btn, index) => {
+                    console.log(`버튼 ${index} 비활성화:`, btn.textContent);
                     btn.classList.remove('active');
                     btn.setAttribute('aria-selected', 'false');
                 });
@@ -716,8 +723,8 @@
                 const targetTab = document.getElementById(tabId);
                 const targetBtn = document.querySelector(`[data-tab="${tabId}"]`);
                 
-                console.log('targetTab:', targetTab);
-                console.log('targetBtn:', targetBtn);
+                console.log('targetTab 찾음:', !!targetTab, targetTab ? targetTab.id : 'null');
+                console.log('targetBtn 찾음:', !!targetBtn, targetBtn ? targetBtn.textContent : 'null');
                 
                 if (targetTab && targetBtn) {
                     targetTab.classList.add('active');
@@ -725,34 +732,51 @@
                     targetBtn.classList.add('active');
                     targetBtn.setAttribute('aria-selected', 'true');
                     
-                    console.log('Tab switched successfully');
+                    console.log('탭 전환 성공!');
                 } else {
-                    console.error(`Tab or button not found: ${tabId}`);
+                    console.error(`탭 또는 버튼을 찾을 수 없음: ${tabId}`);
+                    console.error('targetTab:', targetTab);
+                    console.error('targetBtn:', targetBtn);
                     return;
                 }
             } catch (error) {
-                console.error('Error in showTab:', error);
+                console.error('showTab 함수에서 오류 발생:', error);
             }
         }
 
         // --- 고급 설정 토글 ---
         function toggleAdvancedSettings() {
+            console.log('=== toggleAdvancedSettings 함수 시작 ===');
             const advancedParams = document.getElementById('advancedParams');
             const toggleBtn = document.querySelector('.advanced-toggle');
             
-            if (advancedParams.style.display === 'none') {
-                advancedParams.style.display = 'block';
-                toggleBtn.textContent = '고급 설정 숨기기';
+            console.log('advancedParams 찾음:', !!advancedParams);
+            console.log('toggleBtn 찾음:', !!toggleBtn);
+            console.log('현재 display 상태:', advancedParams ? advancedParams.style.display : 'null');
+            
+            if (advancedParams && toggleBtn) {
+                if (advancedParams.style.display === 'none') {
+                    advancedParams.style.display = 'block';
+                    toggleBtn.textContent = '고급 설정 숨기기';
+                    console.log('고급 설정 표시됨');
+                } else {
+                    advancedParams.style.display = 'none';
+                    toggleBtn.textContent = '고급 설정';
+                    console.log('고급 설정 숨겨짐');
+                }
             } else {
-                advancedParams.style.display = 'none';
-                toggleBtn.textContent = '고급 설정';
+                console.error('고급 설정 요소를 찾을 수 없음');
             }
         }
 
         // --- RAG 질문/답변 ---
         async function askQuestion() {
+            console.log('=== askQuestion 함수 시작 ===');
             const question = document.getElementById('questionInput').value.trim();
+            console.log('질문 내용:', question);
+            
             if (!question) {
+                console.log('질문이 비어있음 - 경고 표시');
                 alert('질문을 입력해주세요.');
                 return;
             }
@@ -1183,25 +1207,38 @@
 
         // --- 이벤트 리스너 ---
         document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOMContentLoaded 이벤트 발생');
+            
             // 탭 버튼 이벤트 리스너
-            document.querySelectorAll('.tab-btn').forEach(btn => {
+            const tabButtons = document.querySelectorAll('.tab-btn');
+            console.log('탭 버튼 개수:', tabButtons.length);
+            tabButtons.forEach((btn, index) => {
+                console.log(`탭 버튼 ${index}:`, btn.textContent, 'data-tab:', btn.getAttribute('data-tab'));
                 btn.addEventListener('click', function() {
+                    console.log('탭 버튼 클릭됨:', this.textContent);
                     const tabId = this.getAttribute('data-tab');
+                    console.log('탭 ID:', tabId);
                     showTab(tabId);
                 });
             });
             
             // 질문하기 버튼 이벤트 리스너
             const submitBtn = document.getElementById('submitBtn');
+            console.log('질문하기 버튼 찾음:', !!submitBtn);
             if (submitBtn) {
-                submitBtn.addEventListener('click', askQuestion);
+                submitBtn.addEventListener('click', function() {
+                    console.log('질문하기 버튼 클릭됨');
+                    askQuestion();
+                });
             }
             
             // 질문 입력 필드 엔터키 이벤트
             const questionInput = document.getElementById('questionInput');
+            console.log('질문 입력 필드 찾음:', !!questionInput);
             if (questionInput) {
                 questionInput.addEventListener('keypress', function(e) {
                     if (e.key === 'Enter' && !e.shiftKey) {
+                        console.log('엔터키 눌림');
                         e.preventDefault();
                         askQuestion();
                     }
@@ -1210,37 +1247,54 @@
             
             // 파일 드롭존 클릭 이벤트
             const fileDropZone = document.getElementById('fileDropZone');
+            console.log('파일 드롭존 찾음:', !!fileDropZone);
             if (fileDropZone) {
                 fileDropZone.addEventListener('click', function() {
+                    console.log('파일 드롭존 클릭됨');
                     document.getElementById('fileInput').click();
                 });
             }
             
             // 파일 업로드 버튼 이벤트 리스너
             const uploadBtn = document.getElementById('uploadBtn');
+            console.log('파일 업로드 버튼 찾음:', !!uploadBtn);
             if (uploadBtn) {
-                uploadBtn.addEventListener('click', uploadDocuments);
+                uploadBtn.addEventListener('click', function() {
+                    console.log('파일 업로드 버튼 클릭됨');
+                    uploadDocuments();
+                });
             }
             
             // 텍스트 추가 버튼 이벤트 리스너
             const textSubmitBtn = document.getElementById('textSubmitBtn');
+            console.log('텍스트 추가 버튼 찾음:', !!textSubmitBtn);
             if (textSubmitBtn) {
-                textSubmitBtn.addEventListener('click', addTextDocument);
+                textSubmitBtn.addEventListener('click', function() {
+                    console.log('텍스트 추가 버튼 클릭됨');
+                    addTextDocument();
+                });
             }
             
             // 고급 설정 토글 버튼 이벤트 리스너
             const advancedToggle = document.getElementById('advancedToggle');
+            console.log('고급 설정 토글 버튼 찾음:', !!advancedToggle);
             if (advancedToggle) {
-                advancedToggle.addEventListener('click', toggleAdvancedSettings);
+                advancedToggle.addEventListener('click', function() {
+                    console.log('고급 설정 토글 버튼 클릭됨');
+                    toggleAdvancedSettings();
+                });
             }
             
             // 텍스트 입력 필드 실시간 글자 수 표시
             const contentInput = document.getElementById('documentContent');
+            console.log('텍스트 입력 필드 찾음:', !!contentInput);
             if (contentInput) {
                 contentInput.addEventListener('input', function() {
                     updateCharacterCount();
                 });
             }
+            
+            console.log('모든 이벤트 리스너 등록 완료');
         });
         
         // 글자 수 업데이트 함수
