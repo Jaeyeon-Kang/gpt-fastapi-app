@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>VectorMind</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>">
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -512,7 +513,7 @@
                         <textarea id="systemPrompt" placeholder="답변 스타일을 지정하세요...">다음 문단들을 참고하여 사용자의 질문에 명확하고 간결하게 답변해주세요.</textarea>
                     </div>
                 </div>
-                <button class="submit-btn" id="submitBtn" onclick="askQuestion()">질문하기</button>
+                <button class="submit-btn" id="submitBtn">질문하기</button>
             </div>
             
             <div id="loading" class="loading" style="display: none;">답변을 생성하는 중입니다...</div>
@@ -538,7 +539,7 @@
                 
                 <div class="upload-area">
                     <input type="file" id="fileInput" accept=".txt,.pdf,.docx,.csv" multiple style="display: none;">
-                    <div class="file-drop-zone" onclick="document.getElementById('fileInput').click()">
+                    <div class="file-drop-zone" id="fileDropZone">
                         <div class="upload-icon">파일</div>
                         <p>파일을 클릭하거나 여기로 드래그하세요</p>
                         <p class="file-types">지원 형식: TXT, PDF, DOCX, CSV</p>
@@ -569,7 +570,7 @@
                     </div>
                 </div>
                 
-                <button class="submit-btn" id="uploadBtn" onclick="uploadDocuments()" disabled>문서 업로드</button>
+                <button class="submit-btn" id="uploadBtn" disabled>문서 업로드</button>
                 
                 <div id="uploadProgress" class="upload-progress" style="display: none;">
                     <div class="progress-bar">
@@ -622,7 +623,7 @@
                         </div>
                     </div>
                     
-                    <button class="submit-btn" id="textSubmitBtn" onclick="addTextDocument()">텍스트 추가</button>
+                    <button class="submit-btn" id="textSubmitBtn">텍스트 추가</button>
                 </div>
                 
                 <div id="textProgress" class="upload-progress" style="display: none;">
@@ -899,8 +900,16 @@
                         <span class="file-name">${file.name}</span>
                         <span class="file-size">(${formatFileSize(file.size)})</span>
                     </div>
-                    <button class="remove-file" onclick="removeFile(${index})">삭제</button>
+                    <button class="remove-file" data-index="${index}">삭제</button>
                 `;
+                
+                // 삭제 버튼에 이벤트 리스너 추가
+                const removeBtn = fileItem.querySelector('.remove-file');
+                removeBtn.addEventListener('click', function() {
+                    const index = parseInt(this.getAttribute('data-index'));
+                    removeFile(index);
+                });
+                
                 selectedFilesDiv.appendChild(fileItem);
             });
         }
@@ -1121,9 +1130,15 @@
             notification.innerHTML = `
                 <div class="notification-content">
                     <span class="notification-message">${message}</span>
-                    <button class="notification-close" onclick="this.parentElement.parentElement.remove()">×</button>
+                    <button class="notification-close">×</button>
                 </div>
             `;
+            
+            // 알림 닫기 버튼에 이벤트 리스너 추가
+            const closeBtn = notification.querySelector('.notification-close');
+            closeBtn.addEventListener('click', function() {
+                notification.remove();
+            });
             
             document.body.appendChild(notification);
             
@@ -1145,6 +1160,13 @@
                 });
             });
             
+            // 질문하기 버튼 이벤트 리스너
+            const submitBtn = document.getElementById('submitBtn');
+            if (submitBtn) {
+                submitBtn.addEventListener('click', askQuestion);
+            }
+            
+            // 질문 입력 필드 엔터키 이벤트
             const questionInput = document.getElementById('questionInput');
             if (questionInput) {
                 questionInput.addEventListener('keypress', function(e) {
@@ -1153,6 +1175,26 @@
                         askQuestion();
                     }
                 });
+            }
+            
+            // 파일 드롭존 클릭 이벤트
+            const fileDropZone = document.getElementById('fileDropZone');
+            if (fileDropZone) {
+                fileDropZone.addEventListener('click', function() {
+                    document.getElementById('fileInput').click();
+                });
+            }
+            
+            // 파일 업로드 버튼 이벤트 리스너
+            const uploadBtn = document.getElementById('uploadBtn');
+            if (uploadBtn) {
+                uploadBtn.addEventListener('click', uploadDocuments);
+            }
+            
+            // 텍스트 추가 버튼 이벤트 리스너
+            const textSubmitBtn = document.getElementById('textSubmitBtn');
+            if (textSubmitBtn) {
+                textSubmitBtn.addEventListener('click', addTextDocument);
             }
             
             // 텍스트 입력 필드 실시간 글자 수 표시
