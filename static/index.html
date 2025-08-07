@@ -475,71 +475,87 @@
             line-height: 1.6;
             opacity: 0.95;
         }
+        
+        .advanced-settings {
+            margin-bottom: 20px;
+        }
+        
+        .advanced-toggle {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            color: #6c757d;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        
+        .advanced-toggle:hover {
+            background: #e9ecef;
+            color: #495057;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>VectorMind</h1>
         <div class="hero-section">
-            <h2>벡터 기반 검색 + AI 사고력으로 문서를 이해하는 새로운 방법</h2>
+            <h2>산더미 같은 문서, AI에게 맡기고 1초 만에 답을 찾으세요</h2>
             <p class="hero-description">
-                문서를 벡터로 변환하여 저장하고, 질문과 가장 관련성 높은 내용을 찾아서 GPT가 답변을 생성합니다. 
-                단순한 키워드 검색이 아닌, 의미 기반 검색으로 정확한 답변을 제공합니다.
+                당신의 논문, 보고서, 법률 문서를 통째로 학습한 AI가 어떤 질문에도 핵심만 정확히 찾아드립니다. 
+                더 이상 Ctrl+F로 시간 낭비하지 마세요.
             </p>
         </div>
         
         <div class="guide-section">
-            <h3>VectorMind 사용법</h3>
+            <h3>간단한 3단계로 시작하세요</h3>
             <div class="guide-steps">
                 <div class="step">
-                    <strong>1단계:</strong> 문서 준비 (PDF, Word, 텍스트 파일) 또는 텍스트 직접 입력
+                    <strong>1단계:</strong> 문서 업로드 (PDF, Word, 텍스트 파일) 또는 직접 텍스트 입력
                 </div>
                 <div class="step">
-                    <strong>2단계:</strong> "문서 업로드" 또는 "텍스트 입력" 탭에서 내용 추가
+                    <strong>2단계:</strong> 문서에 대해 궁금한 것을 자연스럽게 질문하기
                 </div>
                 <div class="step">
-                    <strong>3단계:</strong> "RAG 테스트" 탭에서 문서에 대한 질문 입력
-                </div>
-                <div class="step">
-                    <strong>4단계:</strong> 설정 조정 (Top-k, Temperature) 후 질문하기
-                </div>
-                <div class="step">
-                    <strong>5단계:</strong> AI 답변과 참조 문서 확인
+                    <strong>3단계:</strong> AI가 문서를 분석해서 정확한 답변 제공받기
                 </div>
             </div>
         </div>
         
         <nav class="tab-navigation" role="tablist" aria-label="메인 기능 탭">
-            <button class="tab-btn active" data-tab="rag" role="tab" aria-selected="true" aria-controls="rag">RAG 테스트</button>
+            <button class="tab-btn active" data-tab="rag" role="tab" aria-selected="true" aria-controls="rag">AI에게 질문하기</button>
             <button class="tab-btn" data-tab="text-input" role="tab" aria-selected="false" aria-controls="text-input">텍스트 입력</button>
             <button class="tab-btn" data-tab="upload" role="tab" aria-selected="false" aria-controls="upload">문서 업로드</button>
-            <button class="tab-btn" data-tab="results" role="tab" aria-selected="false" aria-controls="results">실험 결과</button>
         </nav>
         
         <!-- RAG 테스트 탭 -->
         <div id="rag" class="tab-content active">
             <div class="input-section">
                 <textarea class="question-input" id="questionInput" placeholder="질문을 입력하세요... (예: 이 문서의 주요 내용은 무엇인가요?)" rows="3"></textarea>
-                <div class="parameters">
-                    <div class="param-group">
-                        <label for="topK">Top-k (문서 수)</label>
-                        <select id="topK">
-                            <option value="3">3</option>
-                            <option value="5">5</option>
-                            <option value="8">8</option>
-                        </select>
-                    </div>
-                    <div class="param-group">
-                        <label for="temperature">Temperature (창의성)</label>
-                        <select id="temperature">
-                            <option value="0.2">0.2 (보수적)</option>
-                            <option value="0.5">0.5 (균형)</option>
-                            <option value="0.8">0.8 (창의적)</option>
-                        </select>
-                    </div>
-                    <div class="param-group">
-                        <label for="systemPrompt">System Prompt</label>
-                        <textarea id="systemPrompt" placeholder="답변 스타일을 지정하세요...">다음 문단들을 참고하여 사용자의 질문에 명확하고 간결하게 답변해주세요.</textarea>
+                <div class="advanced-settings">
+                    <button class="advanced-toggle" id="advancedToggle">고급 설정</button>
+                    <div class="parameters" id="advancedParams" style="display: none;">
+                        <div class="param-group">
+                            <label for="topK">참고할 문서 개수</label>
+                            <select id="topK">
+                                <option value="3">3개</option>
+                                <option value="5">5개</option>
+                                <option value="8">8개</option>
+                            </select>
+                        </div>
+                        <div class="param-group">
+                            <label for="temperature">답변 스타일</label>
+                            <select id="temperature">
+                                <option value="0.2">정확하고 간결하게</option>
+                                <option value="0.5">균형잡힌 답변</option>
+                                <option value="0.8">창의적이고 자세하게</option>
+                            </select>
+                        </div>
+                        <div class="param-group">
+                            <label for="systemPrompt">AI 역할 설정</label>
+                            <textarea id="systemPrompt" placeholder="AI에게 특별한 역할을 지정하세요...">다음 문단들을 참고하여 사용자의 질문에 명확하고 간결하게 답변해주세요.</textarea>
+                        </div>
                     </div>
                 </div>
                 <button class="submit-btn" id="submitBtn">질문하기</button>
@@ -669,30 +685,7 @@
             </div>
         </div>
 
-        <!-- 실험 결과 탭 -->
-        <div id="results" class="tab-content">
-            <div class="results-section">
-                <h3>실험 결과 요약</h3>
-                <div id="summaryStats" class="summary-stats">
-                    <!-- JavaScript로 동적 생성 -->
-                </div>
-                
-                <h4>Top 10 성능 결과</h4>
-                <div class="table-container">
-                    <table id="resultsTable">
-                        <thead>
-                            <tr>
-                                <th>Rank</th><th>Chunk</th><th>Top-k</th><th>Temp</th><th>Recall@5</th><th>F1</th><th>Latency(ms)</th><th>Cost($)</th>
-                            </tr>
-                        </thead>
-                        <tbody id="resultsTableBody">
-                            <!-- JavaScript로 동적 생성 -->
-                        </tbody>
-                    </table>
-                </div>
-                 <div id="resultsLoading" class="loading" style="display: none;">결과를 불러오는 중입니다...</div>
-            </div>
-        </div>
+
     </div>
 
     <script>
@@ -737,13 +730,22 @@
                     console.error(`Tab or button not found: ${tabId}`);
                     return;
                 }
-
-                // 특별한 탭 처리
-                if (tabId === 'results') {
-                    loadResults();
-                }
             } catch (error) {
                 console.error('Error in showTab:', error);
+            }
+        }
+
+        // --- 고급 설정 토글 ---
+        function toggleAdvancedSettings() {
+            const advancedParams = document.getElementById('advancedParams');
+            const toggleBtn = document.querySelector('.advanced-toggle');
+            
+            if (advancedParams.style.display === 'none') {
+                advancedParams.style.display = 'block';
+                toggleBtn.textContent = '고급 설정 숨기기';
+            } else {
+                advancedParams.style.display = 'none';
+                toggleBtn.textContent = '고급 설정';
             }
         }
 
@@ -1224,6 +1226,12 @@
             const textSubmitBtn = document.getElementById('textSubmitBtn');
             if (textSubmitBtn) {
                 textSubmitBtn.addEventListener('click', addTextDocument);
+            }
+            
+            // 고급 설정 토글 버튼 이벤트 리스너
+            const advancedToggle = document.getElementById('advancedToggle');
+            if (advancedToggle) {
+                advancedToggle.addEventListener('click', toggleAdvancedSettings);
             }
             
             // 텍스트 입력 필드 실시간 글자 수 표시
