@@ -1070,36 +1070,36 @@
 
         // --- 텍스트 입력 처리 ---
         async function addTextDocument() {
-            try {
-                const titleInput = document.getElementById('documentTitle');
-                const contentInput = document.getElementById('documentContent');
-                
-                if (!titleInput || !contentInput) {
-                    throw new Error('필수 입력 요소를 찾을 수 없습니다.');
-                }
-                
-                const title = titleInput.value.trim();
-                const content = contentInput.value.trim();
-                
-                // 입력 검증
-                if (!title) {
-                    showNotification('문서 제목을 입력해주세요.', 'error');
-                    titleInput.focus();
-                    return;
-                }
-                
-                if (!content) {
-                    showNotification('문서 내용을 입력해주세요.', 'error');
-                    contentInput.focus();
-                    return;
-                }
-                
-                // 텍스트 길이 검증 (1MB 제한)
-                const contentSize = new Blob([content]).size;
-                if (contentSize > 1024 * 1024) {
-                    showNotification('문서 내용이 너무 큽니다. 1MB 이하로 입력해주세요.', 'error');
-                    return;
-                }
+            const titleInput = document.getElementById('documentTitle');
+            const contentInput = document.getElementById('documentContent');
+            
+            if (!titleInput || !contentInput) {
+                showNotification('필수 입력 요소를 찾을 수 없습니다.', 'error');
+                return;
+            }
+            
+            const title = titleInput.value.trim();
+            const content = contentInput.value.trim();
+            
+            // 입력 검증
+            if (!title) {
+                showNotification('문서 제목을 입력해주세요.', 'error');
+                titleInput.focus();
+                return;
+            }
+            
+            if (!content) {
+                showNotification('문서 내용을 입력해주세요.', 'error');
+                contentInput.focus();
+                return;
+            }
+            
+            // 텍스트 길이 검증 (1MB 제한)
+            const contentSize = new Blob([content]).size;
+            if (contentSize > 1024 * 1024) {
+                showNotification('문서 내용이 너무 큽니다. 1MB 이하로 입력해주세요.', 'error');
+                return;
+            }
 
             const formData = new FormData();
             formData.append('title', title);
