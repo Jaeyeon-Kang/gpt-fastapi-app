@@ -285,73 +285,83 @@ async def search(req: Request):
         session_id = get_session_id_from(req, body)
         index_path, text_path = get_paths_for_session(session_id)
         local_ctx = body.get("local_context")
- 
-         if not q:
-             raise HTTPException(status_code=400, detail="질문이 비어있습니다.")
- 
-         # 세션 기반 경로가 지정되었지만 아직 업로드된 문서가 없는 경우, 명확한 안내 제공
-         if session_id and (not Path(index_path).exists() or not Path(text_path).exists()):
-             if not local_ctx:
-                 raise HTTPException(status_code=404, detail="현재 세션에 업로드된 문서가 없습니다. 문서를 먼저 업로드하거나 세션을 초기화하세요.")
+        
+        if not q:
+            raise HTTPException(status_code=400, detail="질문이 비어있습니다.")
+        
+        # 세션 기반 경로가 지정되었지만 아직 업로드된 문서가 없는 경우, 명확한 안내 제공
+        if session_id and (not Path(index_path).exists() or not Path(text_path).exists()):
+            if not local_ctx:
+                raise HTTPException(status_code=404, detail="현재 세션에 업로드된 문서가 없습니다. 문서를 먼저 업로드하거나 세션을 초기화하세요.")
+        
+        # 1. Retrieval or fallback to local context
+        used_local = False
+        if local_ctx:
+            top_chunks = [c for c in str(local_ctx).split("\n\n") if c.strip()][:top_k]
+            used_local = True
+        else:
+            vec = embed_text(q)
+            s3 = get_s3_store()
+            if session_id and s3:
+                # 세션 + S3: 원격에서 로드
+                if not s3.exists(session_id, "index.faiss") or not s3.exists(session_id, "text_chunks.txt"):
+                    raise HTTPException(status_code=404, detail="현재 세션에 업로드된 문서가 없습니다. 문서를 먼저 업로드하세요.")
+                try:
+                    index = s3.get_faiss(session_id, "index.faiss")
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=f"S3에서 인덱스를 불러오는 중 오류: {e}")
+                try:
+                    import re
+                    content = s3.get_text(session_id, "text_chunks.txt")
+                    parts = re.split(r"\n{2,}", content)
+                    chunks = [c.strip() for c in parts if c.strip()]
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=f"S3에서 텍스트를 불러오는 중 오류: {e}")
+            else:
+                try:
+                    index = faiss.read_index(index_path)
+                except Exception as e:
+                    raise HTTPException(status_code=404, detail=f"인덱스 파일을 읽을 수 없습니다. 문서를 먼저 업로드하세요. ({e})")
+                try:
+                    chunks = load_chunks(path=text_path)
+                except FileNotFoundError:
+                    raise HTTPException(status_code=404, detail="텍스트 조각 파일이 없습니다. 문서를 먼저 업로드하세요.")
+            if len(chunks) == 0 or index.ntotal == 0:
+                raise HTTPException(status_code=500, detail="검색 가능한 문서가 없습니다. 먼저 문서를 업로드하거나 말뭉치를 구축하세요.")
+            k = min(top_k, index.ntotal, len(chunks))
+            D, I = index.search(vec, k)
+            valid_pairs = [(rank, idx, float(D[0][rank])) for rank, idx in enumerate(I[0]) if 0 <= idx < len(chunks)]
+            top_chunks = [chunks[idx] for _, idx, _ in valid_pairs]
 
-         # 1. Retrieval or fallback to local context
-         if local_ctx:
-             top_chunks = [c for c in str(local_ctx).split("\n\n") if c.strip()][:top_k]
-         else:
-             vec = embed_text(q)
-             s3 = get_s3_store()
-             if session_id and s3:
-                 # 세션 + S3: 원격에서 로드
-                 if not s3.exists(session_id, "index.faiss") or not s3.exists(session_id, "text_chunks.txt"):
-                     raise HTTPException(status_code=404, detail="현재 세션에 업로드된 문서가 없습니다. 문서를 먼저 업로드하세요.")
-                 try:
-                     index = s3.get_faiss(session_id, "index.faiss")
-                 except Exception as e:
-                     raise HTTPException(status_code=500, detail=f"S3에서 인덱스를 불러오는 중 오류: {e}")
-                 try:
-                     import re
-                     content = s3.get_text(session_id, "text_chunks.txt")
-                     parts = re.split(r"\n{2,}", content)
-                     chunks = [c.strip() for c in parts if c.strip()]
-                 except Exception as e:
-                     raise HTTPException(status_code=500, detail=f"S3에서 텍스트를 불러오는 중 오류: {e}")
-             else:
-                 try:
-                     index = faiss.read_index(index_path)
-                 except Exception as e:
-                     raise HTTPException(status_code=404, detail=f"인덱스 파일을 읽을 수 없습니다. 문서를 먼저 업로드하세요. ({e})")
-                 try:
-                     chunks = load_chunks(path=text_path)
-                 except FileNotFoundError:
-                     raise HTTPException(status_code=404, detail="텍스트 조각 파일이 없습니다. 문서를 먼저 업로드하세요.")
-             if len(chunks) == 0 or index.ntotal == 0:
-                 raise HTTPException(status_code=500, detail="검색 가능한 문서가 없습니다. 먼저 문서를 업로드하거나 말뭉치를 구축하세요.")
-             k = min(top_k, index.ntotal, len(chunks))
-             D, I = index.search(vec, k)
-             valid_pairs = [(rank, idx, float(D[0][rank])) for rank, idx in enumerate(I[0]) if 0 <= idx < len(chunks)]
-             top_chunks = [chunks[idx] for _, idx, _ in valid_pairs]
+        # 2. Generation
+        ctx = "\n\n".join(top_chunks)
+        messages = [
+            {"role": "system", "content": sys_p},
+            {"role": "user", "content": f"{ctx}\n\n질문: {q}"}
+        ]
+        res = client.chat.completions.create(model=config.CHAT_MODEL, messages=messages, temperature=temp)
+        ans = res.choices[0].message.content.strip()
 
-         # 2. Generation
-         ctx = "\n\n".join(top_chunks)
-         messages = [
-             {"role": "system", "content": sys_p},
-             {"role": "user", "content": f"{ctx}\n\n질문: {q}"}
-         ]
-         res = client.chat.completions.create(model=config.CHAT_MODEL, messages=messages, temperature=temp)
-         ans = res.choices[0].message.content.strip()
+        if used_local:
+            top_chunks_payload = [
+                {"rank": r + 1, "text": text, "distance": 0.0}
+                for r, text in enumerate(top_chunks)
+            ]
+        else:
+            top_chunks_payload = [
+                {"rank": r + 1, "text": chunks[idx], "distance": dist}
+                for r, (_, idx, dist) in enumerate(valid_pairs)
+            ]
 
-         return {
-             "question": q,
-             "top_k": top_k,
-             "temperature": temp,
-             "system_prompt": sys_p,
-             "session_id": session_id,
-             "top_chunks": [
-                 {"rank": r + 1, "text": chunks[idx], "distance": dist}
-                 for r, (_, idx, dist) in enumerate(valid_pairs)
-             ],
-             "gpt_answer": ans
-         }
+        return {
+            "question": q,
+            "top_k": top_k,
+            "temperature": temp,
+            "system_prompt": sys_p,
+            "session_id": session_id,
+            "top_chunks": top_chunks_payload,
+            "gpt_answer": ans
+        }
     except FileNotFoundError:
         raise HTTPException(status_code=500, detail="Faiss 인덱스 또는 텍스트 파일을 찾을 수 없습니다.")
     except Exception as e:
