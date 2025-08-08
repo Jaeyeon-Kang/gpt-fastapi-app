@@ -573,6 +573,8 @@
         <div id="rag" class="tab-content active">
             <div class="input-section">
                 <textarea class="question-input" id="questionInput" placeholder="질문을 입력하세요... (예: 이 문서의 주요 내용은 무엇인가요?)" rows="3"></textarea>
+                <div id="sessionContext" class="session-context" style="display:none; margin:8px 0; font-size:12px; color:#495057;"></div>
+                <div id="contextPreview" class="context-preview" style="display:none; margin:8px 0; padding:8px; background:#f8f9fa; border:1px solid #e9ecef; border-radius:6px;"></div>
                 <div class="advanced-settings">
                     <button class="advanced-toggle" id="advancedToggle">고급 설정</button>
                     <div class="parameters" id="advancedParams" style="display: none;">
@@ -989,14 +991,16 @@
             
             try {
                 const startTime = Date.now();
+                const sessionId = localStorage.getItem('session_id') || '';
                 const response = await fetch('/search', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-Session-Id': sessionId },
                     body: JSON.stringify({
                         question: question,
                         top_k: parseInt(document.getElementById('topK').value),
                         temperature: parseFloat(document.getElementById('temperature').value),
-                        system_prompt: document.getElementById('systemPrompt').value
+                        system_prompt: document.getElementById('systemPrompt').value,
+                        session_id: sessionId
                     })
                 });
 
@@ -1008,6 +1012,9 @@
                 const data = await response.json();
                 const responseTime = Date.now() - startTime;
                 
+                if (data.session_id) {
+                    localStorage.setItem('session_id', data.session_id);
+                }
                 ui.gptAnswer.innerHTML = data.gpt_answer.replace(/\n/g, '<br>');
                 ui.metrics.innerHTML = `
                     <div class="metric">응답 시간: ${responseTime}ms</div>
@@ -1194,6 +1201,8 @@
             
             formData.append('chunk_size', document.getElementById('chunkSize').value);
             formData.append('chunk_overlap', document.getElementById('chunkOverlap').value);
+            const currentSessionId = localStorage.getItem('session_id') || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+            formData.append('session_id', currentSessionId);
 
             const ui = {
                 uploadBtn: document.getElementById('uploadBtn'),
@@ -1233,6 +1242,9 @@
                 }
 
                 const data = await response.json();
+                if (data.session_id) {
+                    localStorage.setItem('session_id', data.session_id);
+                }
                 
                 ui.summary.innerHTML = `
                     <p><strong>업로드된 파일:</strong> ${data.files_processed}개</p>
@@ -1299,6 +1311,8 @@
             formData.append('content', content);
             formData.append('chunk_size', document.getElementById('textChunkSize').value);
             formData.append('chunk_overlap', document.getElementById('textChunkOverlap').value);
+            const currentSessionId = localStorage.getItem('session_id') || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+            formData.append('session_id', currentSessionId);
 
             const ui = {
                 submitBtn: document.getElementById('textSubmitBtn'),
@@ -1338,6 +1352,9 @@
                 }
 
                 const data = await response.json();
+                if (data.session_id) {
+                    localStorage.setItem('session_id', data.session_id);
+                }
                 
                 ui.summary.innerHTML = `
                     <p><strong>문서 제목:</strong> ${title}</p>
@@ -1400,6 +1417,22 @@
 
         // --- 이벤트 리스너 ---
         document.addEventListener('DOMContentLoaded', function() {
+            // 세션 정보 표시
+            const sessionContext = document.getElementById('sessionContext');
+            const contextPreview = document.getElementById('contextPreview');
+            function refreshSessionBanner() {
+                const sid = localStorage.getItem('session_id');
+                if (sid) {
+                    sessionContext.style.display = 'block';
+                    sessionContext.textContent = `현재 질문은 세션 ${sid.slice(0,8)}… 문서에 대해 수행됩니다.`;
+                    contextPreview.style.display = 'block';
+                    contextPreview.textContent = '이 세션에 업로드된 문서를 바탕으로 답변합니다.';
+                } else {
+                    sessionContext.style.display = 'none';
+                    contextPreview.style.display = 'none';
+                }
+            }
+            refreshSessionBanner();
             // 언어 전환 버튼 이벤트 리스너
             document.querySelectorAll('.lang-btn').forEach(btn => {
                 btn.addEventListener('click', function() {
@@ -1445,13 +1478,13 @@
             // 파일 업로드 버튼 이벤트 리스너
             const uploadBtn = document.getElementById('uploadBtn');
             if (uploadBtn) {
-                uploadBtn.addEventListener('click', uploadDocuments);
+                uploadBtn.addEventListener('click', async () => { await uploadDocuments(); refreshSessionBanner(); });
             }
             
             // 텍스트 추가 버튼 이벤트 리스너
             const textSubmitBtn = document.getElementById('textSubmitBtn');
             if (textSubmitBtn) {
-                textSubmitBtn.addEventListener('click', addTextDocument);
+                textSubmitBtn.addEventListener('click', async () => { await addTextDocument(); refreshSessionBanner(); });
             }
             
             // 고급 설정 토글 버튼 이벤트 리스너

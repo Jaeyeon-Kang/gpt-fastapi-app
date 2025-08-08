@@ -14,6 +14,7 @@ import config # 설정 파일을 불러온다. 이제 하드코딩은 그만.
 import PyPDF2
 from docx import Document
 import io
+from typing import Optional, Tuple
 
 # ── 환경 및 클라이언트 ─────────────────────────────
 load_dotenv()
@@ -117,9 +118,13 @@ def chunk_text(text: str, chunk_size: int, chunk_overlap: int) -> list:
 
 def rebuild_index(chunks: list) -> dict:
     """새로운 청크들로 FAISS 인덱스를 재구성합니다."""
+    return rebuild_index_for_paths(chunks, config.INDEX_PATH, config.TEXT_PATH)
+
+def rebuild_index_for_paths(chunks: list, index_path: str, text_path: str) -> dict:
+    """세션별 경로를 받아 인덱스를 재구성합니다."""
     try:
         # 기존 청크 로드
-        existing_chunks = load_chunks()
+        existing_chunks = load_chunks(path=text_path)
         
         # 새 청크 추가
         all_chunks = existing_chunks + chunks
@@ -141,17 +146,19 @@ def rebuild_index(chunks: list) -> dict:
         index.add(embeddings)
         
         # 인덱스 저장
-        faiss.write_index(index, config.INDEX_PATH)
+        Path(index_path).parent.mkdir(parents=True, exist_ok=True)
+        faiss.write_index(index, index_path)
         
         # 새 청크들을 텍스트 파일에 추가
-        with open(config.TEXT_PATH, 'a', encoding='utf-8') as f:
+        Path(text_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(text_path, 'a', encoding='utf-8') as f:
             for chunk in chunks:
-                f.write(chunk + '\n')
+                f.write(chunk + '\n\n')
         
         return {
             "total_chunks": len(all_chunks),
             "new_chunks": len(chunks),
-            "index_size_mb": os.path.getsize(config.INDEX_PATH) / (1024 * 1024)
+            "index_size_mb": os.path.getsize(index_path) / (1024 * 1024)
         }
         
     except Exception as e:
@@ -168,6 +175,25 @@ async def read_root():
         # 혹시라도 index.html이 없을 경우를 대비한 친절한 안내.
         raise HTTPException(status_code=404, detail="index.html 파일을 찾을 수 없습니다.")
 
+def get_session_id_from(req: Request, body: Optional[dict] = None) -> Optional[str]:
+    try:
+        sid = req.headers.get("X-Session-Id")
+    except Exception:
+        sid = None
+    if not sid and isinstance(body, dict):
+        sid = body.get("session_id")
+    if sid:
+        sid = str(sid).strip()
+    return sid or None
+
+def get_paths_for_session(session_id: Optional[str]) -> Tuple[str, str]:
+    if not session_id:
+        return config.INDEX_PATH, config.TEXT_PATH
+    base = Path("data/sessions") / session_id
+    index_path = str(base / "index.faiss")
+    text_path = str(base / "text_chunks.txt")
+    return index_path, text_path
+
 @app.post("/search")
 async def search(req: Request):
     """RAG 검색을 수행하고 GPT 답변과 참조 문서를 반환한다."""
@@ -177,16 +203,22 @@ async def search(req: Request):
         top_k = int(body.get("top_k", 3))
         temp  = float(body.get("temperature", 0.7))
         sys_p = body.get("system_prompt", "다음 문단들을 참고하여 사용자의 질문에 명확하고 간결하게 답변해주세요.")
+        session_id = get_session_id_from(req, body)
+        index_path, text_path = get_paths_for_session(session_id)
 
         if not q:
             raise HTTPException(status_code=400, detail="질문이 비어있습니다.")
 
         # 1. Retrieval
         vec = embed_text(q)
-        index = faiss.read_index(config.INDEX_PATH)
-        chunks = load_chunks()
-        D, I = index.search(vec, top_k)
-        top_chunks = [chunks[i] for i in I[0]]
+        index = faiss.read_index(index_path)
+        chunks = load_chunks(path=text_path)
+        if len(chunks) == 0 or index.ntotal == 0:
+            raise HTTPException(status_code=500, detail="검색 가능한 문서가 없습니다. 먼저 문서를 업로드하거나 말뭉치를 구축하세요.")
+        k = min(top_k, index.ntotal, len(chunks))
+        D, I = index.search(vec, k)
+        valid_pairs = [(rank, idx, float(D[0][rank])) for rank, idx in enumerate(I[0]) if 0 <= idx < len(chunks)]
+        top_chunks = [chunks[idx] for _, idx, _ in valid_pairs]
 
         # 2. Generation
         ctx = "\n\n".join(top_chunks)
@@ -202,9 +234,10 @@ async def search(req: Request):
             "top_k": top_k,
             "temperature": temp,
             "system_prompt": sys_p,
+            "session_id": session_id,
             "top_chunks": [
-                {"rank": r + 1, "text": chunks[i], "distance": float(D[0][r])}
-                for r, i in enumerate(I[0])
+                {"rank": r + 1, "text": chunks[idx], "distance": dist}
+                for r, (_, idx, dist) in enumerate(valid_pairs)
             ],
             "gpt_answer": ans
         }
@@ -218,11 +251,13 @@ async def search(req: Request):
 async def upload_files(
     files: list[UploadFile] = File(...),
     chunk_size: int = Form(512),
-    chunk_overlap: int = Form(100)
+    chunk_overlap: int = Form(100),
+    session_id: Optional[str] = Form(None)
 ):
     """파일을 업로드하고 RAG 시스템에 추가합니다."""
     try:
         start_time = time.time()
+        index_path, text_path = get_paths_for_session(session_id)
         
         if not files:
             raise HTTPException(status_code=400, detail="업로드할 파일이 없습니다.")
@@ -234,8 +269,15 @@ async def upload_files(
             if not file.filename:
                 continue
                 
-            # 파일 크기 제한 (10MB)
-            if file.size > 10 * 1024 * 1024:
+            # 파일 크기 제한 (10MB) - 안전한 방식으로 계산
+            try:
+                current_pos = file.file.tell()
+                file.file.seek(0, os.SEEK_END)
+                file_size = file.file.tell()
+                file.file.seek(current_pos)
+            except Exception:
+                file_size = None
+            if file_size is not None and file_size > 10 * 1024 * 1024:
                 raise HTTPException(status_code=400, detail=f"파일 크기가 너무 큽니다: {file.filename}")
             
             # 텍스트 추출
@@ -252,7 +294,7 @@ async def upload_files(
             raise HTTPException(status_code=400, detail="처리할 수 있는 텍스트가 없습니다.")
         
         # 인덱스 재구성
-        index_info = rebuild_index(all_chunks)
+        index_info = rebuild_index_for_paths(all_chunks, index_path, text_path)
         
         processing_time = time.time() - start_time
         
@@ -261,7 +303,8 @@ async def upload_files(
             "chunks_created": len(all_chunks),
             "processing_time": round(processing_time, 2),
             "index_size": round(index_info["index_size_mb"], 2),
-            "total_chunks": index_info["total_chunks"]
+            "total_chunks": index_info["total_chunks"],
+            "session_id": session_id
         }
         
     except HTTPException:
@@ -274,11 +317,13 @@ async def add_text_document(
     title: str = Form(...),
     content: str = Form(...),
     chunk_size: int = Form(512),
-    chunk_overlap: int = Form(100)
+    chunk_overlap: int = Form(100),
+    session_id: Optional[str] = Form(None)
 ):
     """텍스트를 직접 입력하여 RAG 시스템에 추가합니다."""
     try:
         start_time = time.time()
+        index_path, text_path = get_paths_for_session(session_id)
         
         # 입력 검증
         if not title or not title.strip():
@@ -310,7 +355,7 @@ async def add_text_document(
             raise HTTPException(status_code=400, detail="처리할 수 있는 텍스트가 없습니다.")
         
         # 인덱스 재구성
-        index_info = rebuild_index(chunks)
+        index_info = rebuild_index_for_paths(chunks, index_path, text_path)
         
         processing_time = time.time() - start_time
         
@@ -327,7 +372,8 @@ async def add_text_document(
             "processing_time": round(processing_time, 2),
             "index_size": round(index_info["index_size_mb"], 2),
             "total_chunks": index_info["total_chunks"],
-            "content_size_bytes": len(content_bytes)
+            "content_size_bytes": len(content_bytes),
+            "session_id": session_id
         }
         
     except HTTPException:
