@@ -646,6 +646,10 @@
                             <option value="512" selected>512</option>
                             <option value="1024">1024</option>
                         </select>
+                        <div class="helper-text" style="font-size:12px;color:#6c757d;margin-top:4px;line-height:1.4;">
+                            청크 크기는 텍스트를 얼마나 큰 덩어리로 나눌지 결정합니다. 숫자가 클수록 한 번에 더 많은 문맥을 담지만,<br/>
+                            너무 크면 세밀한 검색 정밀도가 떨어질 수 있어요. 보통 1200–1600자를 권장합니다.
+                        </div>
                     </div>
                     <div class="param-group">
                         <label for="chunkOverlap">청크 겹침 (문자 수)</label>
@@ -654,6 +658,10 @@
                             <option value="100" selected>100</option>
                             <option value="200">200</option>
                         </select>
+                        <div class="helper-text" style="font-size:12px;color:#6c757d;margin-top:4px;line-height:1.4;">
+                            청크 겹침은 이전 청크의 끝부분을 다음 청크 앞에 일부 겹쳐 넣어 문맥이 끊기지 않게 하는 값입니다.<br/>
+                            문단 경계가 많은 문서는 150–250자를 권장합니다.
+                        </div>
                     </div>
                 </div>
                 
@@ -699,6 +707,10 @@
                                 <option value="512" selected>512</option>
                                 <option value="1024">1024</option>
                             </select>
+                            <div class="helper-text" style="font-size:12px;color:#6c757d;margin-top:4px;line-height:1.4;">
+                                청크 크기는 텍스트를 나누는 덩어리의 크기입니다. 값이 크면 문맥을 더 넓게 담고, 작으면 더 세밀하게 검색합니다.<br/>
+                                일반 문서는 1200–1600자를 추천합니다.
+                            </div>
                         </div>
                         <div class="param-group">
                             <label for="textChunkOverlap">청크 겹침 (문자 수)</label>
@@ -707,6 +719,9 @@
                                 <option value="100" selected>100</option>
                                 <option value="200">200</option>
                             </select>
+                            <div class="helper-text" style="font-size:12px;color:#6c757d;margin-top:4px;line-height:1.4;">
+                                청크 겹침은 청크 사이의 공통 구간 길이입니다. 문맥이 끊기지 않게 150–250자 정도를 자주 사용합니다.
+                            </div>
                         </div>
                     </div>
                     
