@@ -15,6 +15,7 @@ import PyPDF2
 from docx import Document
 import io
 from typing import Optional, Tuple
+from utils.s3_store import S3Store
 
 # ── 환경 및 클라이언트 ─────────────────────────────
 load_dotenv()
@@ -164,53 +165,25 @@ def rebuild_index_for_paths(chunks: list, index_path: str, text_path: str) -> di
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"인덱스 재구성 오류: {str(e)}")
 
-def append_index_for_paths(chunks: list, index_path: str, text_path: str) -> dict:
-    """기존 인덱스가 있으면 새로운 청크만 임베딩하여 추가하고, 없으면 새로 생성한다."""
-    try:
-        Path(index_path).parent.mkdir(parents=True, exist_ok=True)
-        Path(text_path).parent.mkdir(parents=True, exist_ok=True)
+def get_s3_store() -> Optional[S3Store]:
+    if getattr(config, "USE_S3", False) and config.S3_BUCKET:
+        return S3Store(
+            bucket=config.S3_BUCKET,
+            region=config.S3_REGION,
+            prefix=config.S3_PREFIX,
+            aws_access_key_id=config.AWS_ACCESS_KEY_ID or None,
+            aws_secret_access_key=config.AWS_SECRET_ACCESS_KEY or None,
+            aws_session_token=config.AWS_SESSION_TOKEN or None,
+        )
+    return None
 
-        index_exists = Path(index_path).exists()
-        if index_exists:
-            index = faiss.read_index(index_path)
-            current_total = index.ntotal
-        else:
-            index = None
-            current_total = 0
-
-        if not chunks:
-            return {"total_chunks": current_total, "new_chunks": 0, "index_size_mb": (os.path.getsize(index_path) / (1024 * 1024)) if index_exists else 0}
-
-        # 새로운 청크 임베딩
-        print(f"➕ 새 청크 {len(chunks)}개 임베딩 추가 중…")
-        new_embeds = []
-        for i, chunk in enumerate(chunks, 1):
-            if i % 10 == 0:
-                print(f"진행률: {i}/{len(chunks)}")
-            emb = client.embeddings.create(input=chunk, model=config.EMBED_MODEL).data[0].embedding
-            new_embeds.append(emb)
-
-        new_embeds = np.array(new_embeds, dtype='float32')
-
-        # 인덱스에 추가 또는 새로 생성
-        if index is None:
-            dim = new_embeds.shape[1]
-            index = faiss.IndexFlatIP(dim)
-            index.add(new_embeds)
-        else:
-            index.add(new_embeds)
-
-        faiss.write_index(index, index_path)
-
-        # 텍스트 파일에 새 청크 추가
-        with open(text_path, 'a', encoding='utf-8') as f:
-            for chunk in chunks:
-                f.write(chunk + '\n\n')
-
-        total = current_total + len(chunks)
-        return {"total_chunks": total, "new_chunks": len(chunks), "index_size_mb": os.path.getsize(index_path) / (1024 * 1024)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"인덱스 추가 오류: {str(e)}")
+def get_paths_for_session(session_id: Optional[str]) -> Tuple[str, str]:
+    if not session_id:
+        return config.INDEX_PATH, config.TEXT_PATH
+    base = Path("data/sessions") / session_id
+    index_path = str(base / "index.faiss")
+    text_path = str(base / "text_chunks.txt")
+    return index_path, text_path
 
 # ---------- API 라우트 ─────────────────────────────
 @app.get("/")
@@ -234,13 +207,71 @@ def get_session_id_from(req: Request, body: Optional[dict] = None) -> Optional[s
         sid = str(sid).strip()
     return sid or None
 
-def get_paths_for_session(session_id: Optional[str]) -> Tuple[str, str]:
-    if not session_id:
-        return config.INDEX_PATH, config.TEXT_PATH
-    base = Path("data/sessions") / session_id
-    index_path = str(base / "index.faiss")
-    text_path = str(base / "text_chunks.txt")
-    return index_path, text_path
+def append_index_for_paths(chunks: list, index_path: str, text_path: str, session_id: Optional[str] = None) -> dict:
+    """기존 인덱스가 있으면 새로운 청크만 임베딩하여 추가하고, 없으면 새로 생성한다."""
+    try:
+        Path(index_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(text_path).parent.mkdir(parents=True, exist_ok=True)
+
+        s3 = get_s3_store()
+        index = None
+        current_total = 0
+        if session_id and s3:
+            # 원격에서 읽기 시도
+            if s3.exists(session_id, "index.faiss"):
+                index = s3.get_faiss(session_id, "index.faiss")
+                current_total = index.ntotal
+        else:
+            index_exists = Path(index_path).exists()
+            if index_exists:
+                index = faiss.read_index(index_path)
+                current_total = index.ntotal
+
+        if not chunks:
+            size_mb = 0.0
+            if session_id and s3:
+                # 크기 조회는 생략
+                size_mb = 0.0
+            else:
+                size_mb = (os.path.getsize(index_path) / (1024 * 1024)) if Path(index_path).exists() else 0.0
+            return {"total_chunks": current_total, "new_chunks": 0, "index_size_mb": size_mb}
+
+        # 새로운 청크 임베딩
+        print(f"➕ 새 청크 {len(chunks)}개 임베딩 추가 중…")
+        new_embeds = []
+        for i, chunk in enumerate(chunks, 1):
+            if i % 10 == 0:
+                print(f"진행률: {i}/{len(chunks)}")
+            emb = client.embeddings.create(input=chunk, model=config.EMBED_MODEL).data[0].embedding
+            new_embeds.append(emb)
+
+        new_embeds = np.array(new_embeds, dtype='float32')
+
+        # 인덱스에 추가 또는 새로 생성
+        if index is None:
+            dim = new_embeds.shape[1]
+            index = faiss.IndexFlatIP(dim)
+            index.add(new_embeds)
+        else:
+            index.add(new_embeds)
+
+        # 저장: S3 우선, 없으면 로컬
+        if session_id and s3:
+            s3.put_faiss(session_id, "index.faiss", index)
+            # 텍스트 append
+            s3.append_text(session_id, "text_chunks.txt", "".join([c + "\n\n" for c in chunks]))
+            size_mb = 0.0
+        else:
+            faiss.write_index(index, index_path)
+            with open(text_path, 'a', encoding='utf-8') as f:
+                for chunk in chunks:
+                    f.write(chunk + '\n\n')
+            size_mb = os.path.getsize(index_path) / (1024 * 1024)
+
+        total = current_total + len(chunks)
+        return {"total_chunks": total, "new_chunks": len(chunks), "index_size_mb": size_mb}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"인덱스 추가 오류: {str(e)}")
 
 @app.post("/search")
 async def search(req: Request):
@@ -263,14 +294,31 @@ async def search(req: Request):
 
          # 1. Retrieval
          vec = embed_text(q)
-         try:
-             index = faiss.read_index(index_path)
-         except Exception as e:
-             raise HTTPException(status_code=404, detail=f"인덱스 파일을 읽을 수 없습니다. 문서를 먼저 업로드하세요. ({e})")
-         try:
-             chunks = load_chunks(path=text_path)
-         except FileNotFoundError:
-             raise HTTPException(status_code=404, detail="텍스트 조각 파일이 없습니다. 문서를 먼저 업로드하세요.")
+         s3 = get_s3_store()
+         if session_id and s3:
+             # 세션 + S3: 원격에서 로드
+             if not s3.exists(session_id, "index.faiss") or not s3.exists(session_id, "text_chunks.txt"):
+                 raise HTTPException(status_code=404, detail="현재 세션에 업로드된 문서가 없습니다. 문서를 먼저 업로드하세요.")
+             try:
+                 index = s3.get_faiss(session_id, "index.faiss")
+             except Exception as e:
+                 raise HTTPException(status_code=500, detail=f"S3에서 인덱스를 불러오는 중 오류: {e}")
+             try:
+                 import re
+                 content = s3.get_text(session_id, "text_chunks.txt")
+                 parts = re.split(r"\n{2,}", content)
+                 chunks = [c.strip() for c in parts if c.strip()]
+             except Exception as e:
+                 raise HTTPException(status_code=500, detail=f"S3에서 텍스트를 불러오는 중 오류: {e}")
+         else:
+             try:
+                 index = faiss.read_index(index_path)
+             except Exception as e:
+                 raise HTTPException(status_code=404, detail=f"인덱스 파일을 읽을 수 없습니다. 문서를 먼저 업로드하세요. ({e})")
+             try:
+                 chunks = load_chunks(path=text_path)
+             except FileNotFoundError:
+                 raise HTTPException(status_code=404, detail="텍스트 조각 파일이 없습니다. 문서를 먼저 업로드하세요.")
          if len(chunks) == 0 or index.ntotal == 0:
              raise HTTPException(status_code=500, detail="검색 가능한 문서가 없습니다. 먼저 문서를 업로드하거나 말뭉치를 구축하세요.")
          k = min(top_k, index.ntotal, len(chunks))
@@ -352,7 +400,7 @@ async def upload_files(
             raise HTTPException(status_code=400, detail="처리할 수 있는 텍스트가 없습니다.")
         
         # 인덱스에 새 청크만 추가 (재구성 대신)
-        index_info = append_index_for_paths(all_chunks, index_path, text_path)
+        index_info = append_index_for_paths(all_chunks, index_path, text_path, session_id=session_id)
         
         processing_time = time.time() - start_time
         
@@ -413,7 +461,7 @@ async def add_text_document(
             raise HTTPException(status_code=400, detail="처리할 수 있는 텍스트가 없습니다.")
         
         # 인덱스에 새 청크만 추가 (재구성 대신)
-        index_info = append_index_for_paths(chunks, index_path, text_path)
+        index_info = append_index_for_paths(chunks, index_path, text_path, session_id=session_id)
         
         processing_time = time.time() - start_time
         

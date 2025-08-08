@@ -24,3 +24,12 @@ ALLOWED_ORIGINS = [
     "http://127.0.0.1:8000",
     "https://gpt-fastapi-app.onrender.com"
 ]
+
+# S3 저장 설정
+USE_S3 = True  # 무료 플랜에서 인스턴스 로컬 디스크 공유 불가 → S3 사용
+S3_BUCKET = os.getenv("S3_BUCKET", "")
+S3_REGION = os.getenv("S3_REGION", "ap-northeast-2")
+S3_PREFIX = os.getenv("S3_PREFIX", "rag-sessions/")
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+AWS_SESSION_TOKEN = os.getenv("AWS_SESSION_TOKEN", "")

@@ -28,3 +28,4 @@ pandas
 python-multipart
 PyPDF2
 python-docx
+boto3
