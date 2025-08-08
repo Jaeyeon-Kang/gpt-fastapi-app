@@ -253,42 +253,52 @@ async def search(req: Request):
         sys_p = body.get("system_prompt", "다음 문단들을 참고하여 사용자의 질문에 명확하고 간결하게 답변해주세요.")
         session_id = get_session_id_from(req, body)
         index_path, text_path = get_paths_for_session(session_id)
+ 
+         if not q:
+             raise HTTPException(status_code=400, detail="질문이 비어있습니다.")
+ 
+         # 세션 기반 경로가 지정되었지만 아직 업로드된 문서가 없는 경우, 명확한 안내 제공
+         if session_id and (not Path(index_path).exists() or not Path(text_path).exists()):
+             raise HTTPException(status_code=404, detail="현재 세션에 업로드된 문서가 없습니다. 문서를 먼저 업로드하거나 세션을 초기화하세요.")
 
-        if not q:
-            raise HTTPException(status_code=400, detail="질문이 비어있습니다.")
+         # 1. Retrieval
+         vec = embed_text(q)
+         try:
+             index = faiss.read_index(index_path)
+         except Exception as e:
+             raise HTTPException(status_code=404, detail=f"인덱스 파일을 읽을 수 없습니다. 문서를 먼저 업로드하세요. ({e})")
+         try:
+             chunks = load_chunks(path=text_path)
+         except FileNotFoundError:
+             raise HTTPException(status_code=404, detail="텍스트 조각 파일이 없습니다. 문서를 먼저 업로드하세요.")
+         if len(chunks) == 0 or index.ntotal == 0:
+             raise HTTPException(status_code=500, detail="검색 가능한 문서가 없습니다. 먼저 문서를 업로드하거나 말뭉치를 구축하세요.")
+         k = min(top_k, index.ntotal, len(chunks))
+         D, I = index.search(vec, k)
+         valid_pairs = [(rank, idx, float(D[0][rank])) for rank, idx in enumerate(I[0]) if 0 <= idx < len(chunks)]
+         top_chunks = [chunks[idx] for _, idx, _ in valid_pairs]
 
-        # 1. Retrieval
-        vec = embed_text(q)
-        index = faiss.read_index(index_path)
-        chunks = load_chunks(path=text_path)
-        if len(chunks) == 0 or index.ntotal == 0:
-            raise HTTPException(status_code=500, detail="검색 가능한 문서가 없습니다. 먼저 문서를 업로드하거나 말뭉치를 구축하세요.")
-        k = min(top_k, index.ntotal, len(chunks))
-        D, I = index.search(vec, k)
-        valid_pairs = [(rank, idx, float(D[0][rank])) for rank, idx in enumerate(I[0]) if 0 <= idx < len(chunks)]
-        top_chunks = [chunks[idx] for _, idx, _ in valid_pairs]
+         # 2. Generation
+         ctx = "\n\n".join(top_chunks)
+         messages = [
+             {"role": "system", "content": sys_p},
+             {"role": "user", "content": f"{ctx}\n\n질문: {q}"}
+         ]
+         res = client.chat.completions.create(model=config.CHAT_MODEL, messages=messages, temperature=temp)
+         ans = res.choices[0].message.content.strip()
 
-        # 2. Generation
-        ctx = "\n\n".join(top_chunks)
-        messages = [
-            {"role": "system", "content": sys_p},
-            {"role": "user", "content": f"{ctx}\n\n질문: {q}"}
-        ]
-        res = client.chat.completions.create(model=config.CHAT_MODEL, messages=messages, temperature=temp)
-        ans = res.choices[0].message.content.strip()
-
-        return {
-            "question": q,
-            "top_k": top_k,
-            "temperature": temp,
-            "system_prompt": sys_p,
-            "session_id": session_id,
-            "top_chunks": [
-                {"rank": r + 1, "text": chunks[idx], "distance": dist}
-                for r, (_, idx, dist) in enumerate(valid_pairs)
-            ],
-            "gpt_answer": ans
-        }
+         return {
+             "question": q,
+             "top_k": top_k,
+             "temperature": temp,
+             "system_prompt": sys_p,
+             "session_id": session_id,
+             "top_chunks": [
+                 {"rank": r + 1, "text": chunks[idx], "distance": dist}
+                 for r, (_, idx, dist) in enumerate(valid_pairs)
+             ],
+             "gpt_answer": ans
+         }
     except FileNotFoundError:
         raise HTTPException(status_code=500, detail="Faiss 인덱스 또는 텍스트 파일을 찾을 수 없습니다.")
     except Exception as e:

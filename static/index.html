@@ -601,6 +601,7 @@
                     </div>
                 </div>
                 <button class="submit-btn" id="submitBtn">질문하기</button>
+                <button class="submit-btn" id="resetSessionBtn" style="background:#6c757d;margin-left:8px;">세션 초기화</button>
             </div>
             
             <div id="loading" class="loading" style="display: none;">답변을 생성하는 중입니다...</div>
@@ -1020,8 +1021,13 @@
                 });
 
                 if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.detail || `HTTP error! status: ${response.status}`);
+                    let errText = await response.text();
+                    try {
+                        const err = JSON.parse(errText);
+                        throw new Error(err.detail || err.message || `HTTP error! status: ${response.status}`);
+                    } catch (_) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
                 }
                 
                 const data = await response.json();
@@ -1469,6 +1475,18 @@
             const submitBtn = document.getElementById('submitBtn');
             if (submitBtn) {
                 submitBtn.addEventListener('click', askQuestion);
+            }
+            // 세션 초기화 버튼
+            const resetBtn = document.getElementById('resetSessionBtn');
+            if (resetBtn) {
+                resetBtn.addEventListener('click', function() {
+                    localStorage.removeItem('session_id');
+                    showNotification('세션이 초기화되었습니다. 새 문서를 업로드하세요.', 'info');
+                    const sessionContext = document.getElementById('sessionContext');
+                    const contextPreview = document.getElementById('contextPreview');
+                    if (sessionContext) sessionContext.style.display = 'none';
+                    if (contextPreview) contextPreview.style.display = 'none';
+                });
             }
             
             // 질문 입력 필드 엔터키 이벤트
