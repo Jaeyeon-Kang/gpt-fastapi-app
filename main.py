@@ -164,6 +164,54 @@ def rebuild_index_for_paths(chunks: list, index_path: str, text_path: str) -> di
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"인덱스 재구성 오류: {str(e)}")
 
+def append_index_for_paths(chunks: list, index_path: str, text_path: str) -> dict:
+    """기존 인덱스가 있으면 새로운 청크만 임베딩하여 추가하고, 없으면 새로 생성한다."""
+    try:
+        Path(index_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(text_path).parent.mkdir(parents=True, exist_ok=True)
+
+        index_exists = Path(index_path).exists()
+        if index_exists:
+            index = faiss.read_index(index_path)
+            current_total = index.ntotal
+        else:
+            index = None
+            current_total = 0
+
+        if not chunks:
+            return {"total_chunks": current_total, "new_chunks": 0, "index_size_mb": (os.path.getsize(index_path) / (1024 * 1024)) if index_exists else 0}
+
+        # 새로운 청크 임베딩
+        print(f"➕ 새 청크 {len(chunks)}개 임베딩 추가 중…")
+        new_embeds = []
+        for i, chunk in enumerate(chunks, 1):
+            if i % 10 == 0:
+                print(f"진행률: {i}/{len(chunks)}")
+            emb = client.embeddings.create(input=chunk, model=config.EMBED_MODEL).data[0].embedding
+            new_embeds.append(emb)
+
+        new_embeds = np.array(new_embeds, dtype='float32')
+
+        # 인덱스에 추가 또는 새로 생성
+        if index is None:
+            dim = new_embeds.shape[1]
+            index = faiss.IndexFlatIP(dim)
+            index.add(new_embeds)
+        else:
+            index.add(new_embeds)
+
+        faiss.write_index(index, index_path)
+
+        # 텍스트 파일에 새 청크 추가
+        with open(text_path, 'a', encoding='utf-8') as f:
+            for chunk in chunks:
+                f.write(chunk + '\n\n')
+
+        total = current_total + len(chunks)
+        return {"total_chunks": total, "new_chunks": len(chunks), "index_size_mb": os.path.getsize(index_path) / (1024 * 1024)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"인덱스 추가 오류: {str(e)}")
+
 # ---------- API 라우트 ─────────────────────────────
 @app.get("/")
 async def read_root():
@@ -293,8 +341,8 @@ async def upload_files(
         if not all_chunks:
             raise HTTPException(status_code=400, detail="처리할 수 있는 텍스트가 없습니다.")
         
-        # 인덱스 재구성
-        index_info = rebuild_index_for_paths(all_chunks, index_path, text_path)
+        # 인덱스에 새 청크만 추가 (재구성 대신)
+        index_info = append_index_for_paths(all_chunks, index_path, text_path)
         
         processing_time = time.time() - start_time
         
@@ -354,8 +402,8 @@ async def add_text_document(
         if not chunks:
             raise HTTPException(status_code=400, detail="처리할 수 있는 텍스트가 없습니다.")
         
-        # 인덱스 재구성
-        index_info = rebuild_index_for_paths(chunks, index_path, text_path)
+        # 인덱스에 새 청크만 추가 (재구성 대신)
+        index_info = append_index_for_paths(chunks, index_path, text_path)
         
         processing_time = time.time() - start_time
         
