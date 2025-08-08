@@ -26,7 +26,7 @@ ALLOWED_ORIGINS = [
 ]
 
 # S3 저장 설정
-USE_S3 = True  # 무료 플랜에서 인스턴스 로컬 디스크 공유 불가 → S3 사용
+USE_S3 = False  # 기본은 비활성. 필요 시 환경변수 설정 후 True로 변경
 S3_BUCKET = os.getenv("S3_BUCKET", "")
 S3_REGION = os.getenv("S3_REGION", "ap-northeast-2")
 S3_PREFIX = os.getenv("S3_PREFIX", "rag-sessions/")

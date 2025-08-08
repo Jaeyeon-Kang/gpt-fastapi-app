@@ -1000,7 +1000,7 @@
                 metrics: document.getElementById('metrics'),
                 chunksSection: document.getElementById('chunksSection')
             };
-
+ 
             ui.submitBtn.disabled = true;
             ui.loading.style.display = 'block';
             ui.responseSection.style.display = 'none';
@@ -1008,6 +1008,53 @@
             try {
                 const startTime = Date.now();
                 const sessionId = localStorage.getItem('session_id') || '';
+                // 로컬 컨텍스트 사용 여부
+                const preferLocal = localStorage.getItem('prefer_local_context') === 'true';
+                if (preferLocal) {
+                    const localChunks = JSON.parse(localStorage.getItem('local_chunks') || '[]');
+                    if (localChunks.length === 0) {
+                        throw new Error('로컬 문서가 없습니다. 문서를 업로드하거나 로컬 컨텍스트를 끄세요.');
+                    }
+                    // 서버에 top-k 검색을 요청하는 대신, 로컬에서 상위 k개를 그대로 컨텍스트로 사용(간단 버전)
+                    const k = parseInt(document.getElementById('topK').value) || 3;
+                    const selected = localChunks.slice(0, k);
+                    const ctx = selected.join('\n\n');
+                    // 서버에 질문하여 답변 생성(서버는 ctx를 사용자 메시지로 수신)
+                    const response = await fetch('/search', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-Session-Id': sessionId },
+                        body: JSON.stringify({
+                            question: question,
+                            top_k: k,
+                            temperature: parseFloat(document.getElementById('temperature').value),
+                            system_prompt: document.getElementById('systemPrompt').value,
+                            session_id: sessionId,
+                            // 힌트: 서버가 세션 인덱스가 없어도 친절히 안내. 여기서는 로컬 컨텍스트를 직접 포함
+                            local_context: ctx
+                        })
+                    });
+                    if (!response.ok) {
+                        let errText = await response.text();
+                        try { const err = JSON.parse(errText); throw new Error(err.detail || err.message || `HTTP error! status: ${response.status}`);} catch(_){ throw new Error(`HTTP error! status: ${response.status}`);}                    }
+                    const data = await response.json();
+                    const responseTime = Date.now() - startTime;
+                    ui.gptAnswer.innerHTML = data.gpt_answer.replace(/\n/g, '<br>');
+                    ui.metrics.innerHTML = `
+                        <div class="metric">응답 시간: ${responseTime}ms</div>
+                        <div class="metric">Top-k: ${data.top_k}</div>
+                        <div class="metric">Temperature: ${data.temperature}</div>`;
+                    ui.chunksSection.innerHTML = '';
+                    selected.forEach((text, i) => {
+                        const chunkDiv = document.createElement('div');
+                        chunkDiv.className = 'chunk-item';
+                        chunkDiv.innerHTML = `
+                            <div><span class="chunk-rank">#${i+1}</span></div>
+                            <div class="chunk-text">${text}</div>`;
+                        ui.chunksSection.appendChild(chunkDiv);
+                    });
+                    ui.responseSection.style.display = 'block';
+                    return;
+                }
                 const response = await fetch('/search', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-Session-Id': sessionId },
@@ -1266,6 +1313,13 @@
                 if (data.session_id) {
                     localStorage.setItem('session_id', data.session_id);
                 }
+                // 로컬 컨텍스트 저장: 업로드한 파일 텍스트를 브라우저에서 읽어 chunking 반영
+                const chunkSize = parseInt(document.getElementById('chunkSize').value);
+                const chunkOverlap = parseInt(document.getElementById('chunkOverlap').value);
+                const texts = await Promise.all(selectedFiles.map(f => f.text()));
+                const merged = texts.join('\n\n');
+                const localChunks = splitIntoChunks(merged, chunkSize, chunkOverlap);
+                localStorage.setItem('local_chunks', JSON.stringify(localChunks));
                 
                 ui.summary.innerHTML = `
                     <p><strong>업로드된 파일:</strong> ${data.files_processed}개</p>
@@ -1292,6 +1346,19 @@
             } finally {
                 ui.uploadBtn.disabled = false;
             }
+        }
+        // 로컬 청킹 유틸(프론트 간단 버전)
+        function splitIntoChunks(text, chunkSize, overlap) {
+            const chunks = [];
+            let start = 0;
+            while (start < text.length) {
+                const end = Math.min(start + chunkSize, text.length);
+                chunks.push(text.slice(start, end));
+                if (end === text.length) break;
+                start = end - overlap;
+                if (start < 0) start = 0;
+            }
+            return chunks;
         }
 
         // --- 텍스트 입력 처리 ---
@@ -1447,13 +1514,24 @@
                     sessionContext.style.display = 'block';
                     sessionContext.textContent = `현재 질문은 세션 ${sid.slice(0,8)}… 문서에 대해 수행됩니다.`;
                     contextPreview.style.display = 'block';
-                    contextPreview.textContent = '이 세션에 업로드된 문서를 바탕으로 답변합니다.';
+                    const localChunks = JSON.parse(localStorage.getItem('local_chunks') || '[]');
+                    const preferLocal = localStorage.getItem('prefer_local_context') === 'true';
+                    contextPreview.textContent = preferLocal ? `브라우저 저장소의 로컬 문서(${localChunks.length} 청크)를 바탕으로 답변합니다.` : '이 세션에 업로드된 문서를 바탕으로 답변합니다.';
                 } else {
                     sessionContext.style.display = 'none';
                     contextPreview.style.display = 'none';
                 }
             }
             refreshSessionBanner();
+            // 로컬 컨텍스트 토글(간단 구현: Dev키)
+            document.addEventListener('keydown', function(e){
+                if (e.ctrlKey && e.key === 'l') {
+                    const cur = localStorage.getItem('prefer_local_context') === 'true';
+                    localStorage.setItem('prefer_local_context', (!cur).toString());
+                    showNotification(`로컬 컨텍스트 사용: ${(!cur) ? 'ON' : 'OFF'}`, 'info');
+                    refreshSessionBanner();
+                }
+            });
             // 언어 전환 버튼 이벤트 리스너
             document.querySelectorAll('.lang-btn').forEach(btn => {
                 btn.addEventListener('click', function() {
