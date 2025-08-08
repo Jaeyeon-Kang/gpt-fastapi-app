@@ -16,6 +16,7 @@ from docx import Document
 import io
 from typing import Optional, Tuple
 from utils.s3_store import S3Store
+from utils.rate_limit import check_limits
 
 # ── 환경 및 클라이언트 ─────────────────────────────
 load_dotenv()
@@ -277,6 +278,9 @@ def append_index_for_paths(chunks: list, index_path: str, text_path: str, sessio
 async def search(req: Request):
     """RAG 검색을 수행하고 GPT 답변과 참조 문서를 반환한다."""
     try:
+        # 레이트 리밋: 세션 또는 IP 기준
+        session_id_header = req.headers.get("X-Session-Id")
+        check_limits(req, name="search", daily_limit=config.SEARCH_DAILY_LIMIT, burst_limit=config.SEARCH_BURST_LIMIT, session_id=session_id_header)
         body  = await req.json()
         q     = body.get("question", "")
         top_k = int(body.get("top_k", 3))
@@ -370,6 +374,7 @@ async def search(req: Request):
 
 @app.post("/upload")
 async def upload_files(
+    req: Request,
     files: list[UploadFile] = File(...),
     chunk_size: int = Form(512),
     chunk_overlap: int = Form(100),
@@ -377,6 +382,8 @@ async def upload_files(
 ):
     """파일을 업로드하고 RAG 시스템에 추가합니다."""
     try:
+        # 레이트 리밋: 업로드는 일일 제한만 (버스트 공격 방지 서버단에서는 같은 함수 사용)
+        check_limits(req, name="upload", daily_limit=config.UPLOAD_DAILY_LIMIT, burst_limit=5, session_id=session_id)
         start_time = time.time()
         index_path, text_path = get_paths_for_session(session_id)
         
@@ -435,6 +442,7 @@ async def upload_files(
 
 @app.post("/add-text")
 async def add_text_document(
+    req: Request,
     title: str = Form(...),
     content: str = Form(...),
     chunk_size: int = Form(512),
@@ -443,6 +451,8 @@ async def add_text_document(
 ):
     """텍스트를 직접 입력하여 RAG 시스템에 추가합니다."""
     try:
+        # 레이트 리밋: 텍스트 추가도 일일 제한
+        check_limits(req, name="add_text", daily_limit=config.ADDTEXT_DAILY_LIMIT, burst_limit=10, session_id=session_id)
         start_time = time.time()
         index_path, text_path = get_paths_for_session(session_id)
         

@@ -1071,8 +1071,16 @@
                     let errText = await response.text();
                     try {
                         const err = JSON.parse(errText);
+                        if (response.status === 429) {
+                            showNotification(err.detail || '요청 제한을 초과했습니다. 잠시 후 다시 시도하세요.', 'error');
+                            return;
+                        }
                         throw new Error(err.detail || err.message || `HTTP error! status: ${response.status}`);
                     } catch (_) {
+                        if (response.status === 429) {
+                            showNotification('요청이 너무 많습니다. 잠시 후 다시 시도하세요.', 'error');
+                            return;
+                        }
                         throw new Error(`HTTP error! status: ${response.status}`);
                     }
                 }
@@ -1305,8 +1313,21 @@
                 ui.progressText.textContent = '완료!';
 
                 if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.detail || `HTTP error! status: ${response.status}`);
+                    let errText = await response.text();
+                    try {
+                        const err = JSON.parse(errText);
+                        if (response.status === 429) {
+                            showNotification(err.detail || '업로드 요청 제한을 초과했습니다. 잠시 후 다시 시도하세요.', 'error');
+                            return;
+                        }
+                        throw new Error(err.detail || `HTTP error! status: ${response.status}`);
+                    } catch (_) {
+                        if (response.status === 429) {
+                            showNotification('업로드 요청이 너무 많습니다. 잠시 후 다시 시도하세요.', 'error');
+                            return;
+                        }
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
                 }
 
                 const data = await response.json();
@@ -1435,8 +1456,21 @@
                 ui.progressText.textContent = '완료!';
 
                 if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.detail || `HTTP error! status: ${response.status}`);
+                    let errText = await response.text();
+                    try {
+                        const err = JSON.parse(errText);
+                        if (response.status === 429) {
+                            showNotification(err.detail || '요청 제한을 초과했습니다. 잠시 후 다시 시도하세요.', 'error');
+                            return;
+                        }
+                        throw new Error(err.detail || `HTTP error! status: ${response.status}`);
+                    } catch (_) {
+                        if (response.status === 429) {
+                            showNotification('요청이 너무 많습니다. 잠시 후 다시 시도하세요.', 'error');
+                            return;
+                        }
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
                 }
 
                 const data = await response.json();
