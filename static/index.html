@@ -40,8 +40,8 @@
             margin-bottom: -2px;
         }
         .tab-btn.active {
-            color: #007bff;
-            border-bottom-color: #007bff;
+            color: #0f766e;
+            border-bottom-color: #0f766e;
             font-weight: bold;
         }
         .tab-content { display: none; }
@@ -57,7 +57,8 @@
         }
         .question-input:focus {
             outline: none;
-            border-color: #007bff;
+            border-color: #0f766e;
+            box-shadow: 0 0 0 3px rgba(15,118,110,0.15);
         }
         .parameters {
             display: grid;
@@ -85,7 +86,7 @@
             min-height: 60px;
         }
         .submit-btn {
-            background: #007bff;
+            background: #0f766e;
             color: white;
             border: none;
             padding: 12px 30px;
@@ -94,7 +95,7 @@
             cursor: pointer;
             transition: background 0.3s;
         }
-        .submit-btn:hover { background: #0056b3; }
+        .submit-btn:hover { background: #115e59; }
         .submit-btn:disabled {
             background: #ccc;
             cursor: not-allowed;
@@ -113,9 +114,9 @@
             margin-bottom: 20px;
         }
         .response-card h3 {
-            color: #495057;
+            color: #111827;
             margin-top: 0;
-            border-bottom: 2px solid #007bff;
+            border-bottom: 2px solid #0f766e;
             padding-bottom: 10px;
         }
         .chunks-section { margin-top: 20px; }
@@ -127,7 +128,7 @@
             margin-bottom: 10px;
         }
         .chunk-rank {
-            background: #007bff;
+            background: #0f766e;
             color: white;
             padding: 2px 8px;
             border-radius: 12px;
@@ -520,9 +521,9 @@
         }
         
         .lang-btn.active {
-            background: #007bff;
+            background: #0f766e;
             color: white;
-            border-color: #007bff;
+            border-color: #0f766e;
         }
         
         .lang-btn:hover:not(.active) {
@@ -541,45 +542,36 @@
             </div>
         </div>
         <div class="hero-section">
-            <h2>산더미 같은 문서, AI에게 맡기고 1초 만에 답을 찾으세요</h2>
-            <p class="hero-description">
-                당신의 논문, 보고서, 법률 문서를 통째로 학습한 AI가 어떤 질문에도 핵심만 정확히 찾아드립니다. 
-                더 이상 Ctrl+F로 시간 낭비하지 마세요.
-            </p>
+            <h2 class="i18n-hero-title"></h2>
+            <p class="hero-description i18n-hero-desc"></p>
         </div>
         
         <div class="guide-section">
-            <h3>간단한 3단계로 시작하세요</h3>
+            <h3 class="i18n-guide-title"></h3>
             <div class="guide-steps">
-                <div class="step">
-                    <strong>1단계:</strong> 문서 업로드 (PDF, Word, 텍스트 파일) 또는 직접 텍스트 입력
-                </div>
-                <div class="step">
-                    <strong>2단계:</strong> 문서에 대해 궁금한 것을 자연스럽게 질문하기
-                </div>
-                <div class="step">
-                    <strong>3단계:</strong> AI가 문서를 분석해서 정확한 답변 제공받기
-                </div>
+                <div class="step"><strong>1</strong> <span class="i18n-step1"></span></div>
+                <div class="step"><strong>2</strong> <span class="i18n-step2"></span></div>
+                <div class="step"><strong>3</strong> <span class="i18n-step3"></span></div>
             </div>
         </div>
         
         <nav class="tab-navigation" role="tablist" aria-label="메인 기능 탭">
-            <button class="tab-btn active" data-tab="rag" role="tab" aria-selected="true" aria-controls="rag">AI에게 질문하기</button>
-            <button class="tab-btn" data-tab="text-input" role="tab" aria-selected="false" aria-controls="text-input">텍스트 입력</button>
-            <button class="tab-btn" data-tab="upload" role="tab" aria-selected="false" aria-controls="upload">문서 업로드</button>
+            <button class="tab-btn active" data-tab="rag" role="tab" aria-selected="true" aria-controls="rag"></button>
+            <button class="tab-btn" data-tab="text-input" role="tab" aria-selected="false" aria-controls="text-input"></button>
+            <button class="tab-btn" data-tab="upload" role="tab" aria-selected="false" aria-controls="upload"></button>
         </nav>
         
         <!-- RAG 테스트 탭 -->
         <div id="rag" class="tab-content active">
             <div class="input-section">
-                <textarea class="question-input" id="questionInput" placeholder="질문을 입력하세요... (예: 이 문서의 주요 내용은 무엇인가요?)" rows="3"></textarea>
+                <textarea class="question-input" id="questionInput" rows="3"></textarea>
                 <div id="sessionContext" class="session-context" style="display:none; margin:8px 0; font-size:12px; color:#495057;"></div>
                 <div id="contextPreview" class="context-preview" style="display:none; margin:8px 0; padding:8px; background:#f8f9fa; border:1px solid #e9ecef; border-radius:6px;"></div>
                 <div class="advanced-settings">
-                    <button class="advanced-toggle" id="advancedToggle">고급 설정</button>
+                    <button class="advanced-toggle" id="advancedToggle"></button>
                     <div class="parameters" id="advancedParams" style="display: none;">
                         <div class="param-group">
-                            <label for="topK">참고할 문서 개수</label>
+                            <label for="topK" class="i18n-doc-count"></label>
                             <select id="topK">
                                 <option value="3">3개</option>
                                 <option value="5">5개</option>
@@ -587,7 +579,7 @@
                             </select>
                         </div>
                         <div class="param-group">
-                            <label for="temperature">답변 스타일</label>
+                            <label for="temperature" class="i18n-answer-style"></label>
                             <select id="temperature">
                                 <option value="0.2">정확하고 간결하게</option>
                                 <option value="0.5">균형잡힌 답변</option>
@@ -595,25 +587,25 @@
                             </select>
                         </div>
                         <div class="param-group">
-                            <label for="systemPrompt">AI 역할 설정</label>
-                            <textarea id="systemPrompt" placeholder="AI에게 특별한 역할을 지정하세요...">다음 문단들을 참고하여 사용자의 질문에 명확하고 간결하게 답변해주세요.</textarea>
+                            <label for="systemPrompt" class="i18n-ai-role"></label>
+                            <textarea id="systemPrompt"></textarea>
                         </div>
                     </div>
                 </div>
-                <button class="submit-btn" id="submitBtn">질문하기</button>
-                <button class="submit-btn" id="resetSessionBtn" style="background:#6c757d;margin-left:8px;">세션 초기화</button>
+                <button class="submit-btn" id="submitBtn"></button>
+                <button class="submit-btn" id="resetSessionBtn" style="background:#334155;margin-left:8px;"></button>
             </div>
             
-            <div id="loading" class="loading" style="display: none;">답변을 생성하는 중입니다...</div>
+            <div id="loading" class="loading" style="display: none;"></div>
             
             <div id="responseSection" class="response-section" style="display: none;">
                 <div class="response-card">
-                    <h3>GPT 답변</h3>
+                    <h3 class="i18n-gpt-answer"></h3>
                     <div id="gptAnswer"></div>
                     <div class="metrics" id="metrics"></div>
                 </div>
                 <div class="response-card">
-                    <h3>참조된 문서</h3>
+                    <h3 class="i18n-ref-docs"></h3>
                     <div id="chunksSection" class="chunks-section"></div>
                 </div>
             </div>
@@ -622,20 +614,20 @@
         <!-- 문서 업로드 탭 -->
         <div id="upload" class="tab-content">
             <div class="upload-section">
-                <h3>문서 업로드</h3>
-                <p>새로운 문서를 업로드하여 RAG 시스템에 추가하세요.</p>
+                <h3 class="i18n-upload-title"></h3>
+                <p class="i18n-upload-desc"></p>
                 
                 <div class="upload-area">
                     <input type="file" id="fileInput" accept=".txt,.pdf,.docx,.csv" multiple style="display: none;">
                     <div class="file-drop-zone" id="fileDropZone">
-                        <div class="upload-icon">파일</div>
-                        <p>파일을 클릭하거나 여기로 드래그하세요</p>
-                        <p class="file-types">지원 형식: TXT, PDF, DOCX, CSV</p>
+                        <div class="upload-icon">📄</div>
+                        <p class="i18n-file-drop"></p>
+                        <p class="file-types i18n-supported"></p>
                     </div>
                 </div>
                 
                 <div id="fileList" class="file-list" style="display: none;">
-                    <h4>선택된 파일:</h4>
+                    <h4 class="i18n-selected-files"></h4>
                     <div id="selectedFiles"></div>
                 </div>
                 
@@ -666,7 +658,7 @@
                     </div>
                 </div>
                 
-                <button class="submit-btn" id="uploadBtn" disabled>문서 업로드</button>
+                <button class="submit-btn" id="uploadBtn" disabled></button>
                 
                 <div id="uploadProgress" class="upload-progress" style="display: none;">
                     <div class="progress-bar">
@@ -676,7 +668,7 @@
                 </div>
                 
                 <div id="uploadResult" class="upload-result" style="display: none;">
-                    <h4>✅ 업로드 완료!</h4>
+                    <h4 class="i18n-upload-done"></h4>
                     <div id="uploadSummary"></div>
                 </div>
             </div>
@@ -685,24 +677,24 @@
         <!-- 텍스트 입력 탭 -->
         <div id="text-input" class="tab-content">
             <div class="text-input-section">
-                <h3>📝 텍스트 직접 입력</h3>
-                <p>문서 내용을 직접 텍스트로 입력하여 RAG 시스템에 추가하세요.</p>
+                <h3 class="i18n-text-title"></h3>
+                <p class="i18n-text-desc"></p>
                 
                 <div class="input-section">
                     <div class="param-group">
-                        <label for="documentTitle">문서 제목</label>
-                        <input type="text" id="documentTitle" placeholder="문서의 제목을 입력하세요 (예: 인공지능 개요)" class="question-input">
+                        <label for="documentTitle" class="i18n-doc-title"></label>
+                        <input type="text" id="documentTitle" class="question-input">
                     </div>
                     
                     <div class="param-group">
-                        <label for="documentContent">문서 내용</label>
-                        <textarea id="documentContent" placeholder="문서의 전체 내용을 여기에 입력하세요..." rows="15" class="question-input"></textarea>
+                        <label for="documentContent" class="i18n-doc-content"></label>
+                        <textarea id="documentContent" rows="15" class="question-input"></textarea>
                         <div id="charCount" class="char-counter">0 / 1,000,000 글자</div>
                     </div>
                     
                     <div class="upload-options">
                         <div class="param-group">
-                            <label for="textChunkSize">청크 크기 (문자 수)</label>
+                            <label for="textChunkSize" class="i18n-chunk-size"></label>
                             <select id="textChunkSize">
                                 <option value="256">256</option>
                                 <option value="512" selected>512</option>
@@ -714,7 +706,7 @@
                             </div>
                         </div>
                         <div class="param-group">
-                            <label for="textChunkOverlap">청크 겹침 (문자 수)</label>
+                            <label for="textChunkOverlap" class="i18n-chunk-overlap"></label>
                             <select id="textChunkOverlap">
                                 <option value="50">50</option>
                                 <option value="100" selected>100</option>
@@ -726,7 +718,7 @@
                         </div>
                     </div>
                     
-                    <button class="submit-btn" id="textSubmitBtn">텍스트 추가</button>
+                    <button class="submit-btn" id="textSubmitBtn"></button>
                 </div>
                 
                 <div id="textProgress" class="upload-progress" style="display: none;">
@@ -737,7 +729,7 @@
                 </div>
                 
                 <div id="textResult" class="upload-result" style="display: none;">
-                    <h4>텍스트 추가 완료!</h4>
+                    <h4 class="i18n-text-added"></h4>
                     <div id="textSummary"></div>
                 </div>
             </div>
@@ -872,14 +864,14 @@
             const t = translations[currentLang];
             
             // 히어로 섹션
-            document.querySelector('.hero-section h2').textContent = t.hero_title;
-            document.querySelector('.hero-description').textContent = t.hero_description;
+            document.querySelector('.i18n-hero-title').textContent = t.hero_title;
+            document.querySelector('.i18n-hero-desc').textContent = t.hero_description;
             
             // 가이드 섹션
-            document.querySelector('.guide-section h3').textContent = t.guide_title;
-            document.querySelectorAll('.step')[0].innerHTML = `<strong>1단계:</strong> ${t.step1}`;
-            document.querySelectorAll('.step')[1].innerHTML = `<strong>2단계:</strong> ${t.step2}`;
-            document.querySelectorAll('.step')[2].innerHTML = `<strong>3단계:</strong> ${t.step3}`;
+            document.querySelector('.i18n-guide-title').textContent = t.guide_title;
+            document.querySelector('.i18n-step1').textContent = t.step1;
+            document.querySelector('.i18n-step2').textContent = t.step2;
+            document.querySelector('.i18n-step3').textContent = t.step3;
             
             // 탭 버튼
             document.querySelector('[data-tab="rag"]').textContent = t.ask_ai;
@@ -891,18 +883,16 @@
             
             // 고급 설정
             const advancedToggle = document.getElementById('advancedToggle');
-            if (advancedToggle) {
-                advancedToggle.textContent = t.advanced_settings;
-            }
+            if (advancedToggle) advancedToggle.textContent = t.advanced_settings;
             
             // 고급 설정 옵션들
-            const topKLabel = document.querySelector('label[for="topK"]');
+            const topKLabel = document.querySelector('.i18n-doc-count');
             if (topKLabel) topKLabel.textContent = t.doc_count;
             
-            const tempLabel = document.querySelector('label[for="temperature"]');
+            const tempLabel = document.querySelector('.i18n-answer-style');
             if (tempLabel) tempLabel.textContent = t.answer_style;
             
-            const promptLabel = document.querySelector('label[for="systemPrompt"]');
+            const promptLabel = document.querySelector('.i18n-ai-role');
             if (promptLabel) promptLabel.textContent = t.ai_role;
             
             const promptTextarea = document.getElementById('systemPrompt');
@@ -919,17 +909,42 @@
             // 질문하기 버튼
             const submitBtn = document.getElementById('submitBtn');
             if (submitBtn) submitBtn.textContent = t.ask_button;
+            const resetBtnTxt = document.getElementById('resetSessionBtn');
+            if (resetBtnTxt) resetBtnTxt.textContent = currentLang === 'ko' ? '세션 초기화' : 'Reset Session';
             
             // 로딩 메시지
             const loading = document.getElementById('loading');
             if (loading) loading.textContent = t.loading;
             
             // 응답 섹션
-            const gptAnswer = document.querySelector('#responseSection h3');
+            const gptAnswer = document.querySelector('.i18n-gpt-answer');
             if (gptAnswer) gptAnswer.textContent = t.gpt_answer;
             
-            const referencedDocs = document.querySelectorAll('#responseSection h3')[1];
+            const referencedDocs = document.querySelector('.i18n-ref-docs');
             if (referencedDocs) referencedDocs.textContent = t.referenced_docs;
+
+            // 문서 업로드 탭
+            document.querySelector('.i18n-upload-title').textContent = t.upload_title;
+            document.querySelector('.i18n-upload-desc').textContent = t.upload_desc;
+            document.querySelector('.i18n-file-drop').textContent = t.file_drop;
+            document.querySelector('.i18n-supported').textContent = t.supported_formats;
+            document.getElementById('uploadBtn').textContent = t.upload_button;
+            const selectedFilesH4 = document.querySelector('.i18n-selected-files');
+            if (selectedFilesH4) selectedFilesH4.textContent = currentLang === 'ko' ? '선택된 파일:' : 'Selected files:';
+            const uploadDone = document.querySelector('#uploadResult .i18n-upload-done');
+            if (uploadDone) uploadDone.textContent = currentLang === 'ko' ? '✅ 업로드 완료!' : '✅ Upload complete!';
+
+            // 텍스트 입력 탭
+            document.querySelector('.i18n-text-title').textContent = '📝 ' + t.text_title;
+            document.querySelector('.i18n-text-desc').textContent = t.text_desc;
+            document.querySelector('.i18n-doc-title').textContent = t.doc_title;
+            document.getElementById('documentTitle').placeholder = currentLang === 'ko' ? '문서의 제목을 입력하세요 (예: 인공지능 개요)' : 'Enter the document title (e.g., AI Overview)';
+            document.querySelector('.i18n-doc-content').textContent = t.doc_content;
+            document.getElementById('documentContent').placeholder = t.content_placeholder;
+            document.querySelector('.i18n-chunk-size').textContent = t.chunk_size;
+            document.querySelector('.i18n-chunk-overlap').textContent = t.chunk_overlap;
+            document.getElementById('textSubmitBtn').textContent = t.add_text;
+            document.querySelector('#textResult .i18n-text-added').textContent = t.text_added;
         }
         
         // --- 탭 관리 ---
