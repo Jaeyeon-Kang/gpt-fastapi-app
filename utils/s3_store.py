@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Optional
 import boto3
 from botocore.client import Config
+from botocore.exceptions import ClientError
 
 import faiss
 
@@ -38,8 +39,11 @@ class S3Store:
         try:
             obj = self.s3.get_object(Bucket=self.bucket, Key=key)
             prev = obj["Body"].read()
-        except self.s3.exceptions.NoSuchKey:  # type: ignore
-            prev = b""
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchKey':
+                prev = b""
+            else:
+                raise
         self.s3.put_object(Bucket=self.bucket, Key=key, Body=prev + text.encode("utf-8"), ContentType="text/plain; charset=utf-8")
 
     def get_text(self, session_id: str, name: str) -> str:

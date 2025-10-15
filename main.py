@@ -1,3 +1,12 @@
+# -*- coding: utf-8 -*-
+import sys
+import os
+# Windows 콘솔 UTF-8 인코딩 강제 설정
+if sys.platform == 'win32':
+    import codecs
+    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
+    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
+
 from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -17,6 +26,7 @@ import io
 from typing import Optional, Tuple
 from utils.s3_store import S3Store
 from utils.rate_limit import check_limits
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 # ── 환경 및 클라이언트 ─────────────────────────────
 load_dotenv()
@@ -55,14 +65,14 @@ def ensure_faiss_index():
     idx_path = Path(config.INDEX_PATH)
     txt_path = Path(config.TEXT_PATH)
     if not idx_path.exists() or (txt_path.exists() and txt_path.stat().st_mtime > idx_path.stat().st_mtime):
-        print("🔄 FAISS 인덱스를 다시 만드는 중... 잠시 기다려.")
+        print("[INFO] FAISS 인덱스를 다시 만드는 중... 잠시 기다려.")
         try:
             from experiments.generate_embedding import build_index
             chunks = load_chunks()
             build_index(chunks)
-            print("✅ index.faiss 생성 완료.")
+            print("[OK] index.faiss 생성 완료.")
         except Exception as e:
-            print(f"❌ Faiss 인덱스 생성 실패: {e}")
+            print(f"[ERROR] Faiss 인덱스 생성 실패: {e}")
 
 def embed_text(text: str):
     try:
@@ -108,8 +118,6 @@ def extract_text_from_file(file: UploadFile) -> str:
 
 def chunk_text(text: str, chunk_size: int, chunk_overlap: int) -> list:
     """텍스트를 청크로 나눕니다."""
-    from langchain.text_splitter import RecursiveCharacterTextSplitter
-    
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,

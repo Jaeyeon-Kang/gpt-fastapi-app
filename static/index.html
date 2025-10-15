@@ -1554,6 +1554,9 @@
 
         // --- 이벤트 리스너 ---
         document.addEventListener('DOMContentLoaded', function() {
+            // 초기 언어 설정 및 텍스트 업데이트
+            updateTexts();
+
             // 세션 정보 표시
             const sessionContext = document.getElementById('sessionContext');
             const contextPreview = document.getElementById('contextPreview');
