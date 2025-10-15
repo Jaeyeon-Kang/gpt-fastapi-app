@@ -488,6 +488,74 @@ async def search_stream(req: Request):
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
+@app.get("/files")
+async def list_files(req: Request, session_id: Optional[str] = None):
+    """업로드된 파일 목록 조회"""
+    try:
+        sid = session_id or req.headers.get("X-Session-Id") or ""
+        index_path, text_path = get_paths_for_session(sid)
+        metadata_path = os.path.join(os.path.dirname(index_path), "files.json")
+
+        files_list = []
+        if os.path.exists(metadata_path):
+            try:
+                with open(metadata_path, "r", encoding="utf-8") as f:
+                    files_list = json.load(f)
+            except:
+                pass
+
+        return JSONResponse({"files": files_list, "session_id": sid})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"message": f"파일 목록 조회 실패: {e}"})
+
+@app.delete("/files/{filename}")
+async def delete_file(req: Request, filename: str, session_id: Optional[str] = None):
+    """특정 파일 삭제"""
+    try:
+        sid = session_id or req.headers.get("X-Session-Id") or ""
+        s3 = get_s3_store()
+
+        if sid and s3:
+            # S3에서 파일 삭제
+            s3.delete_file(sid, filename)
+            return JSONResponse({"message": f"파일 '{filename}' 삭제 완료"})
+        else:
+            return JSONResponse(status_code=400, content={"message": "로컬 모드에서는 개별 파일 삭제가 지원되지 않습니다."})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"message": f"파일 삭제 실패: {e}"})
+
+@app.delete("/session")
+async def clear_session(req: Request):
+    """현재 세션의 모든 데이터 삭제"""
+    try:
+        session_id = req.headers.get("X-Session-Id") or ""
+
+        if not session_id:
+            return JSONResponse(status_code=400, content={"message": "세션 ID가 없습니다."})
+
+        index_path, text_path = get_paths_for_session(session_id)
+
+        # 로컬 파일 삭제
+        if os.path.exists(index_path):
+            os.remove(index_path)
+        if os.path.exists(text_path):
+            os.remove(text_path)
+
+        # S3 데이터 삭제 (있으면)
+        s3 = get_s3_store()
+        if s3:
+            try:
+                if s3.exists(session_id, "index.faiss"):
+                    s3.delete(session_id, "index.faiss")
+                if s3.exists(session_id, "text_chunks.txt"):
+                    s3.delete(session_id, "text_chunks.txt")
+            except:
+                pass  # S3 에러는 무시
+
+        return JSONResponse({"message": "세션 데이터 삭제 완료", "session_id": session_id})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"message": f"세션 삭제 실패: {e}"})
+
 @app.post("/upload")
 async def upload_files(
     req: Request,
@@ -508,7 +576,8 @@ async def upload_files(
         
         all_chunks = []
         processed_files = 0
-        
+        file_metadata = []  # 업로드된 파일 정보 저장
+
         for file in files:
             if not file.filename:
                 continue
@@ -531,7 +600,15 @@ async def upload_files(
             chunks = chunk_text(text, chunk_size, chunk_overlap)
             all_chunks.extend(chunks)
             processed_files += 1
-            
+
+            # 파일 메타데이터 저장
+            file_metadata.append({
+                "name": file.filename,
+                "size": file_size or 0,
+                "chunks": len(chunks),
+                "uploaded_at": datetime.now().isoformat()
+            })
+
             print(f"✅ {file.filename} 처리 완료: {len(chunks)}개 청크 생성")
         
         if not all_chunks:
@@ -539,15 +616,29 @@ async def upload_files(
         
         # 인덱스에 새 청크만 추가 (재구성 대신)
         index_info = append_index_for_paths(all_chunks, index_path, text_path, session_id=session_id)
-        
+
+        # 파일 메타데이터를 JSON으로 저장
+        metadata_path = os.path.join(os.path.dirname(index_path), "files.json")
+        existing_metadata = []
+        if os.path.exists(metadata_path):
+            try:
+                with open(metadata_path, "r", encoding="utf-8") as f:
+                    existing_metadata = json.load(f)
+            except:
+                pass
+        existing_metadata.extend(file_metadata)
+        with open(metadata_path, "w", encoding="utf-8") as f:
+            json.dump(existing_metadata, f, ensure_ascii=False, indent=2)
+
         processing_time = time.time() - start_time
-        
+
         return {
             "files_processed": processed_files,
             "chunks_created": len(all_chunks),
             "processing_time": round(processing_time, 2),
             "index_size": round(index_info["index_size_mb"], 2),
             "total_chunks": index_info["total_chunks"],
+            "uploaded_files": file_metadata,
             "session_id": session_id
         }
         
