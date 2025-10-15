@@ -10,7 +10,7 @@ if sys.platform == 'win32':
 from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from openai import OpenAI
 from prompt_template import make_prompt
 from datetime import datetime
@@ -379,6 +379,114 @@ async def search(req: Request):
     except Exception as e:
         # 이제 예상치 못한 에러가 나도 서버는 죽지 않는다.
         return JSONResponse(status_code=500, content={"message": f"서버 내부 오류: {e}"})
+
+@app.post("/search-stream")
+async def search_stream(req: Request):
+    """RAG 검색 후 GPT 답변을 스트리밍으로 반환 (Server-Sent Events)"""
+    import json
+    import asyncio
+    import sys
+
+    # generator 밖에서 먼저 body 파싱 (중요!)
+    body = await req.json()
+    session_id_header = req.headers.get("X-Session-Id")
+
+    async def generate():
+        try:
+            # 레이트 리밋
+            check_limits(req, name="search", daily_limit=config.SEARCH_DAILY_LIMIT, burst_limit=config.SEARCH_BURST_LIMIT, session_id=session_id_header)
+
+            q = body.get("question", "")
+            top_k = int(body.get("top_k", 3))
+            temp = float(body.get("temperature", 0.7))
+            sys_p = body.get("system_prompt", "다음 문단들을 참고하여 사용자의 질문에 명확하고 간결하게 답변해주세요.")
+            session_id = get_session_id_from(req, body)
+            index_path, text_path = get_paths_for_session(session_id)
+            local_ctx = body.get("local_context")
+
+            if not q:
+                yield f"data: {json.dumps({'error': '질문이 비어있습니다.'}, ensure_ascii=False)}\n\n"
+                return
+
+            # 1. Retrieval
+            used_local = False
+            if local_ctx:
+                top_chunks = [c for c in str(local_ctx).split("\n\n") if c.strip()][:top_k]
+                used_local = True
+            else:
+                vec = embed_text(q)
+                s3 = get_s3_store()
+                if session_id and s3:
+                    if not s3.exists(session_id, "index.faiss") or not s3.exists(session_id, "text_chunks.txt"):
+                        yield f"data: {json.dumps({'error': '현재 세션에 업로드된 문서가 없습니다.'}, ensure_ascii=False)}\n\n"
+                        return
+                    index = s3.get_faiss(session_id, "index.faiss")
+                    import re
+                    content = s3.get_text(session_id, "text_chunks.txt")
+                    parts = re.split(r"\n{2,}", content)
+                    chunks = [c.strip() for c in parts if c.strip()]
+                else:
+                    try:
+                        index = faiss.read_index(index_path)
+                    except Exception:
+                        yield f"data: {json.dumps({'error': '인덱스 파일을 읽을 수 없습니다.'}, ensure_ascii=False)}\n\n"
+                        return
+                    try:
+                        chunks = load_chunks(path=text_path)
+                    except FileNotFoundError:
+                        yield f"data: {json.dumps({'error': '텍스트 조각 파일이 없습니다.'}, ensure_ascii=False)}\n\n"
+                        return
+
+                if len(chunks) == 0 or index.ntotal == 0:
+                    yield f"data: {json.dumps({'error': '검색 가능한 문서가 없습니다.'}, ensure_ascii=False)}\n\n"
+                    return
+
+                k = min(top_k, index.ntotal, len(chunks))
+                D, I = index.search(vec, k)
+                valid_pairs = [(rank, idx, float(D[0][rank])) for rank, idx in enumerate(I[0]) if 0 <= idx < len(chunks)]
+                top_chunks = [chunks[idx] for _, idx, _ in valid_pairs]
+
+            # 참조 문서 먼저 전송
+            if used_local:
+                top_chunks_payload = [
+                    {"rank": r + 1, "text": text, "distance": 0.0}
+                    for r, text in enumerate(top_chunks)
+                ]
+            else:
+                top_chunks_payload = [
+                    {"rank": r + 1, "text": chunks[idx], "distance": dist}
+                    for r, (_, idx, dist) in enumerate(valid_pairs)
+                ]
+
+            yield f"data: {json.dumps({'type': 'chunks', 'chunks': top_chunks_payload}, ensure_ascii=False)}\n\n"
+
+            # 2. GPT 스트리밍 생성
+            ctx = "\n\n".join(top_chunks)
+            messages = [
+                {"role": "system", "content": sys_p},
+                {"role": "user", "content": f"{ctx}\n\n질문: {q}"}
+            ]
+
+            stream = client.chat.completions.create(
+                model=config.CHAT_MODEL,
+                messages=messages,
+                temperature=temp,
+                stream=True
+            )
+
+            for chunk in stream:
+                if chunk.choices[0].delta.content is not None:
+                    content = chunk.choices[0].delta.content
+                    yield f"data: {json.dumps({'type': 'token', 'content': content}, ensure_ascii=False)}\n\n"
+                    await asyncio.sleep(0)  # 다른 태스크에 제어권 양도
+
+            # 완료 신호
+            yield f"data: {json.dumps({'type': 'done'}, ensure_ascii=False)}\n\n"
+
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 @app.post("/upload")
 async def upload_files(

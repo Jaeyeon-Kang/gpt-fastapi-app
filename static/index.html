@@ -1135,7 +1135,139 @@
                 ui.loading.style.display = 'none';
             }
         }
-        
+
+        // --- RAG 스트리밍 질문/답변 (실시간) ---
+        let currentEventSource = null;  // 취소를 위한 전역 변수
+
+        async function askQuestionStream() {
+            const question = document.getElementById('questionInput').value.trim();
+
+            if (!question) {
+                alert(translations[currentLang].error_question);
+                return;
+            }
+
+            const ui = {
+                submitBtn: document.getElementById('submitBtn'),
+                loading: document.getElementById('loading'),
+                responseSection: document.getElementById('responseSection'),
+                gptAnswer: document.getElementById('gptAnswer'),
+                metrics: document.getElementById('metrics'),
+                chunksSection: document.getElementById('chunksSection')
+            };
+
+            ui.submitBtn.disabled = true;
+            ui.submitBtn.textContent = '⏹ 중지';  // 버튼 텍스트 변경
+            ui.loading.style.display = 'block';
+            ui.loading.textContent = '답변 생성 중...';
+            ui.responseSection.style.display = 'none';
+            ui.gptAnswer.innerHTML = '';  // 초기화
+
+            const startTime = Date.now();
+            let fullAnswer = '';
+
+            try {
+                const sessionId = localStorage.getItem('session_id') || '';
+                const preferLocal = localStorage.getItem('prefer_local_context') === 'true';
+                let local_context = null;
+
+                if (preferLocal) {
+                    const localChunks = JSON.parse(localStorage.getItem('local_chunks') || '[]');
+                    if (localChunks.length === 0) {
+                        throw new Error('로컬 문서가 없습니다.');
+                    }
+                    const k = parseInt(document.getElementById('topK').value) || 3;
+                    local_context = localChunks.slice(0, k).join('\n\n');
+                }
+
+                const requestBody = {
+                    question: question,
+                    top_k: parseInt(document.getElementById('topK').value),
+                    temperature: parseFloat(document.getElementById('temperature').value),
+                    system_prompt: document.getElementById('systemPrompt').value,
+                    session_id: sessionId,
+                    local_context: local_context
+                };
+
+                // EventSource는 GET만 지원하므로 fetch로 POST 후 스트림 읽기
+                const response = await fetch('/search-stream', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Session-Id': sessionId
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                ui.responseSection.style.display = 'block';
+                ui.loading.style.display = 'none';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';  // 마지막 불완전한 줄은 버퍼에 보관
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const data = JSON.parse(line.slice(6));
+
+                            if (data.type === 'chunks') {
+                                // 참조 문서 표시
+                                ui.chunksSection.innerHTML = '';
+                                data.chunks.forEach(chunk => {
+                                    const chunkDiv = document.createElement('div');
+                                    chunkDiv.className = 'chunk-item';
+                                    chunkDiv.innerHTML = `
+                                        <div>
+                                            <span class="chunk-rank">#${chunk.rank}</span>
+                                            <span class="chunk-distance">거리: ${chunk.distance.toFixed(4)}</span>
+                                        </div>
+                                        <div class="chunk-text">${chunk.text}</div>`;
+                                    ui.chunksSection.appendChild(chunkDiv);
+                                });
+                            } else if (data.type === 'token') {
+                                // 토큰 하나씩 추가 (타이핑 효과)
+                                fullAnswer += data.content;
+                                ui.gptAnswer.innerHTML = fullAnswer.replace(/\n/g, '<br>');
+                                // 자동 스크롤
+                                ui.gptAnswer.scrollTop = ui.gptAnswer.scrollHeight;
+                            } else if (data.type === 'done') {
+                                // 완료
+                                const responseTime = Date.now() - startTime;
+                                ui.metrics.innerHTML = `
+                                    <div class="metric">⚡ 스트리밍 완료: ${responseTime}ms</div>
+                                    <div class="metric">Top-k: ${requestBody.top_k}</div>
+                                    <div class="metric">Temperature: ${requestBody.temperature}</div>`;
+                                break;
+                            } else if (data.type === 'error' || data.error) {
+                                throw new Error(data.message || data.error);
+                            }
+                        }
+                    }
+                }
+
+            } catch (error) {
+                console.error('Streaming Error:', error);
+                alert('스트리밍 오류: ' + error.message);
+            } finally {
+                ui.submitBtn.disabled = false;
+                ui.submitBtn.textContent = translations[currentLang].ask_button || '질문하기';
+                ui.loading.style.display = 'none';
+            }
+        }
+
         // --- 실험 결과 로딩 ---
         async function loadResults() {
             const loadingIndicator = document.getElementById('resultsLoading');
@@ -1601,10 +1733,10 @@
                 });
             });
             
-            // 질문하기 버튼 이벤트 리스너
+            // 질문하기 버튼 이벤트 리스너 (스트리밍 버전 사용)
             const submitBtn = document.getElementById('submitBtn');
             if (submitBtn) {
-                submitBtn.addEventListener('click', askQuestion);
+                submitBtn.addEventListener('click', askQuestionStream);  // 스트리밍으로 변경!
             }
             // 세션 초기화 버튼
             const resetBtn = document.getElementById('resetSessionBtn');
