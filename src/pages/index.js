@@ -1,51 +1,43 @@
-import { useState } from "react";
-import axios from "axios";
+import { useState } from 'react';
+import Layout from '@/components/Layout';
+import TabNavigation from '@/components/TabNavigation';
+import RAGSearch from '@/components/RAGSearch';
+import FileUpload from '@/components/FileUpload';
+import TextInput from '@/components/TextInput';
+import Notification from '@/components/Notification';
 
 export default function Home() {
-  const [prompt, setPrompt] = useState("");
-  const [reply, setReply] = useState("");
-  const [loading, setLoading] = useState(false);
-const [error, setError] = useState(null)
- 
+  const [activeTab, setActiveTab] = useState('rag');
+  const [notification, setNotification] = useState(null);
 
-const sendPrompt = async () => {
-  if (!prompt.trim()) return;
-  setLoading(true);
-  setError(null);
-  try {
-    const res = await axios.post("/api/chat", { prompt });
-    setReply(res.data.reply);
-  } catch (err) {
-    setReply("Error: failed to connect to GPT server.");
-    setError(JSON.stringify(err, null, 2));
-  } finally {
-    setLoading(false);
-  }
-};
+  const showNotification = (message, type = 'info') => {
+    setNotification({ message, type });
+  };
+
+  const closeNotification = () => {
+    setNotification(null);
+  };
 
   return (
-    <main style={{ padding: "2rem", maxWidth: "600px", margin: "0 auto" }}>
-      <h1>GPT Chat</h1>
-      {error && (
-  <div style={{ marginTop: "1rem", color: "red", whiteSpace: "pre-wrap" }}>
-    <strong>Error detail:</strong>
-    <div>{error}</div>
-  </div>
-)}
-      <textarea
-        rows={4}
-        style={{ width: "100%", marginBottom: "1rem" }}
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        placeholder="Ask something..."
-      />
-      <button onClick={sendPrompt} disabled={loading}>
-        {loading ? "Loading..." : "Send"}
-      </button>
-      <div style={{ marginTop: "2rem", whiteSpace: "pre-wrap" }}>
-        <strong>Reply:</strong>
-        <div>{reply}</div>
+    <Layout>
+      {/* Notification */}
+      {notification && (
+        <Notification
+          message={notification.message}
+          type={notification.type}
+          onClose={closeNotification}
+        />
+      )}
+
+      {/* Tab Navigation */}
+      <TabNavigation activeTab={activeTab} onTabChange={setActiveTab} />
+
+      {/* Tab Content */}
+      <div className="mt-6">
+        {activeTab === 'rag' && <RAGSearch onNotification={showNotification} />}
+        {activeTab === 'text-input' && <TextInput onNotification={showNotification} />}
+        {activeTab === 'upload' && <FileUpload onNotification={showNotification} />}
       </div>
-    </main>
+    </Layout>
   );
 }
