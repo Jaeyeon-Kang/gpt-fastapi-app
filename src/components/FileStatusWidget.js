@@ -143,9 +143,9 @@ export default function FileStatusWidget({ onTabChange, onNotification, onFilesC
 
     return (
       <div className="mb-6 p-4 bg-green-50 border-2 border-green-300 rounded-lg">
-        <div className="flex items-center justify-between">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-1">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3 mb-1 flex-wrap">
               <h3 className="text-green-800 font-bold">
                 📂 {t('search_target_docs')} ({files.length}{t('count_unit')})
               </h3>
@@ -159,7 +159,7 @@ export default function FileStatusWidget({ onTabChange, onNotification, onFilesC
           </div>
           <button
             onClick={() => setExpanded(true)}
-            className="ml-4 text-green-700 hover:text-green-900 font-medium text-sm whitespace-nowrap"
+            className="text-green-700 hover:text-green-900 font-medium text-sm whitespace-nowrap flex-shrink-0"
           >
             ▼ {t('expand')}
           </button>

@@ -101,11 +101,41 @@ export default function RAGSearch({ onNotification, onTabChange }) {
     }
   };
 
-  const handleResetSession = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('session_id');
+  const handleResetSession = async () => {
+    // Show confirmation dialog
+    if (!confirm(t('reset_session_confirm'))) {
+      return;
     }
-    onNotification('세션이 초기화되었습니다.', 'info');
+
+    try {
+      const sessionId = typeof window !== 'undefined'
+        ? (localStorage.getItem('session_id') || '')
+        : '';
+
+      // Call DELETE /session endpoint to clear backend data
+      await axios.delete('http://localhost:8000/session', {
+        params: { session_id: sessionId },
+      });
+
+      // Clear localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('session_id');
+      }
+
+      // Clear current response
+      setResponse(null);
+
+      // Show success notification
+      onNotification(t('reset_session_success'), 'success');
+
+      // Reload page to reset all state
+      if (typeof window !== 'undefined') {
+        window.location.reload();
+      }
+    } catch (error) {
+      console.error('❌ Failed to reset session:', error);
+      onNotification(t('delete_failed'), 'error');
+    }
   };
 
   return (
