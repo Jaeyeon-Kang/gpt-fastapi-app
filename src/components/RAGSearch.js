@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useTranslation } from '@/hooks/useTranslation';
 import axios from 'axios';
+import FileStatusWidget from './FileStatusWidget';
 
-export default function RAGSearch({ onNotification }) {
+export default function RAGSearch({ onNotification, onTabChange }) {
   const { t } = useTranslation();
   const [question, setQuestion] = useState('');
   const [topK, setTopK] = useState(3);
@@ -109,6 +110,12 @@ export default function RAGSearch({ onNotification }) {
 
   return (
     <div>
+      {/* File Status Widget */}
+      <FileStatusWidget
+        onTabChange={onTabChange}
+        onNotification={onNotification}
+      />
+
       {/* Question Input */}
       <div className="mb-6">
         <textarea

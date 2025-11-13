@@ -492,20 +492,29 @@ async def search_stream(req: Request):
 async def list_files(req: Request, session_id: Optional[str] = None):
     """업로드된 파일 목록 조회"""
     try:
+        import json
         sid = session_id or req.headers.get("X-Session-Id") or ""
         index_path, text_path = get_paths_for_session(sid)
         metadata_path = os.path.join(os.path.dirname(index_path), "files.json")
+
+        print(f"📂 [DEBUG /files] Session ID: {sid}")
+        print(f"📂 [DEBUG /files] Metadata path: {metadata_path}")
+        print(f"📂 [DEBUG /files] File exists: {os.path.exists(metadata_path)}")
 
         files_list = []
         if os.path.exists(metadata_path):
             try:
                 with open(metadata_path, "r", encoding="utf-8") as f:
                     files_list = json.load(f)
-            except:
-                pass
+                print(f"📂 [DEBUG /files] Loaded {len(files_list)} files")
+                print(f"📂 [DEBUG /files] Files: {files_list}")
+            except Exception as e:
+                print(f"❌ [DEBUG /files] Error loading: {e}")
 
+        print(f"📤 [DEBUG /files] Returning {len(files_list)} files")
         return JSONResponse({"files": files_list, "session_id": sid})
     except Exception as e:
+        print(f"❌ [DEBUG /files] Exception: {e}")
         return JSONResponse(status_code=500, content={"message": f"파일 목록 조회 실패: {e}"})
 
 @app.delete("/files/{filename}")
@@ -694,16 +703,51 @@ async def add_text_document(
         
         # 인덱스에 새 청크만 추가 (재구성 대신)
         index_info = append_index_for_paths(chunks, index_path, text_path, session_id=session_id)
-        
+
+        # 파일 메타데이터를 JSON으로 저장
+        import json
+        metadata_dir = os.path.dirname(index_path)
+        metadata_path = os.path.join(metadata_dir, "files.json")
+
+        # 디렉토리가 없으면 생성
+        os.makedirs(metadata_dir, exist_ok=True)
+
+        print(f"📁 [DEBUG] Metadata path: {metadata_path}")
+        print(f"📁 [DEBUG] Session ID: {session_id}")
+
+        existing_metadata = []
+        if os.path.exists(metadata_path):
+            try:
+                with open(metadata_path, "r", encoding="utf-8") as f:
+                    existing_metadata = json.load(f)
+                print(f"📝 [DEBUG] Loaded {len(existing_metadata)} existing files")
+            except Exception as e:
+                print(f"⚠️ [DEBUG] Failed to load existing metadata: {e}")
+
+        # 텍스트 입력 메타데이터 추가
+        text_metadata = {
+            "name": f"{title}.txt",
+            "size": len(content_bytes),
+            "chunks": len(chunks),
+            "uploaded_at": datetime.now().isoformat(),
+            "type": "text_input"
+        }
+        existing_metadata.append(text_metadata)
+        print(f"✅ [DEBUG] Adding file metadata: {text_metadata['name']}")
+
+        with open(metadata_path, "w", encoding="utf-8") as f:
+            json.dump(existing_metadata, f, ensure_ascii=False, indent=2)
+        print(f"💾 [DEBUG] Saved metadata to {metadata_path}")
+
         processing_time = time.time() - start_time
-        
+
         # 로깅 개선
         print(f"✅ 텍스트 문서 처리 완료:")
         print(f"   - 제목: {title}")
         print(f"   - 청크 수: {len(chunks)}개")
         print(f"   - 처리 시간: {processing_time:.2f}초")
         print(f"   - 인덱스 크기: {index_info['index_size_mb']:.2f}MB")
-        
+
         return {
             "title": title,
             "chunks_created": len(chunks),

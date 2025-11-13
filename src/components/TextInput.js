@@ -52,14 +52,22 @@ export default function TextInput({ onNotification }) {
         : String(Date.now());
       formData.append('session_id', sessionId);
 
+      console.log('📝 [TextInput] Submitting text...');
+      console.log('   Title:', title);
+      console.log('   Content length:', content.length);
+      console.log('   Session ID:', sessionId);
+
       const response = await axios.post('http://localhost:8000/add-text', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
 
+      console.log('✅ [TextInput] Response:', response.data);
+
       if (response.data.session_id && typeof window !== 'undefined') {
         localStorage.setItem('session_id', response.data.session_id);
+        console.log('💾 [TextInput] Saved session ID:', response.data.session_id);
       }
 
       setResult(response.data);
@@ -67,7 +75,7 @@ export default function TextInput({ onNotification }) {
       setContent('');
       onNotification('텍스트 추가 완료!', 'success');
     } catch (error) {
-      console.error('Text addition error:', error);
+      console.error('❌ [TextInput] Text addition error:', error);
       onNotification('텍스트 추가 중 오류가 발생했습니다: ' + error.message, 'error');
     } finally {
       setProcessing(false);

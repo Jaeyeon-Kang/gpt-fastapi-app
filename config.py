@@ -21,6 +21,8 @@ RESULTS_CSV_PATH = "experiments/results/grid_search_latest.csv" # 최신 실험 
 ALLOWED_ORIGINS = [
     "http://localhost",
     "http://127.0.0.1",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
     "https://gpt-fastapi-app.onrender.com"

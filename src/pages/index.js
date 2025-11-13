@@ -34,7 +34,7 @@ export default function Home() {
 
       {/* Tab Content */}
       <div className="mt-6">
-        {activeTab === 'rag' && <RAGSearch onNotification={showNotification} />}
+        {activeTab === 'rag' && <RAGSearch onNotification={showNotification} onTabChange={setActiveTab} />}
         {activeTab === 'text-input' && <TextInput onNotification={showNotification} />}
         {activeTab === 'upload' && <FileUpload onNotification={showNotification} />}
       </div>
